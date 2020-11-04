@@ -1,0 +1,40 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+```{r}
+library("rstan") # observe startup messages
+options(mc.cores = parallel::detectCores())
+rstan_options(auto_write = TRUE)
+```
+
+```{r}
+###Value (in chilean pesos) of the permit that traders pay to fishers per legal unit
+visa=3000    
+
+####PRIOR for landings (total units landed each year, considering legal and illegal)
+quota=(3200000/27) ### 3200 ton quota in 2018. Divided in 27 because "units" are 27 kg boxes
+
+###Other fix parameters needed for the model
+wbox=5000   ### Illegal price of reference at the port per unit: This comes from my fieldwork 1
+pbox=17000  ### Illegal price of reference at market per unit: This comes from my fieldwork 2
+fb=9.2e+05 ## fine expected per box, from chilean law
+```
+
+Can debug stan models with `stanc('filename.stan')`
+
+```{r}
+data <- list(quota=quota, daysop=200, ppmax=6000, DR=5e-05, wbox=wbox, pbox=pbox, visa=visa, fb=fb)
+fit <- stan(file='illegal_fishing.stan', data=data, iter=11000, warmup=1000, chains=4, seed=0, refresh=11000, control = list(adapt_delta = 0.99))
+print(fit)
+```
+
+```{r}
+library("bayesplot")
+library("ggplot2")
+stan_dens(fit)
+plot(density(posterior$pp), main="Price Premium")
+plot(density(posterior$D), main="Detectability")
+plot(density(posterior$nR), main="Total landings")
+```
+quota
