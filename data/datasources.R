@@ -70,8 +70,9 @@ weekly_landings[1:weeks,9]=weekly_landings[1:weeks,7]-Landings$SD
 
 plot(weekly_landings[,7])
 
-colnames(weekly_landings) <- c("2019", "2018", "2017", "2016", "2015", "2014", "mean", "mean+std", "mean-std")
+colnames(weekly_landings) <- c("2019", "2018", "2017", "2016", "2015", "2014", "mean", "mean_p_std", "mean_m_std")
 write.csv(weekly_landings,"data/weekly_landings.csv", row.names = FALSE)
+
 
 ####Enforcement#### Only on VII region, exluding month 9 (september)
 #This is where I store the file. I uploaded this file as Enforcement Data
