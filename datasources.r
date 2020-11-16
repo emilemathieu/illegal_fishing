@@ -68,7 +68,7 @@ ofdata[1:weeks,9]=ofdata[1:weeks,7]-Landings$SD
 
 plot(ofdata[,7])
 
-#####Second one is enforcement
+#####Second one is enforcement####
 ####Enforcement#### Only on VII region, filter by cometido
 Enfeffort <- read.csv("~/OneDrive - Nexus365/Market Framework Chapter/Encuestas Analysis and Background/EnforcementData.csv")
 Enfeffort = filter(Enfeffort,Enfeffort$Especie =="Merluza común Artesanal IV a 41 28.6 LS")
@@ -77,6 +77,7 @@ Date <- (Enfeffort$Fecha)
 Month=as.numeric(substring(Date,4,5))
 Year=substring(Date,9,10)
 Enfeffort$Month=Month
+Enfeffort$Year=Year
 Enfeffort = filter(Enfeffort,Enfeffort$Month !=9)
 Date <- (Enfeffort$Fecha)
 enfweeks=week(as.POSIXlt(Date, format="%d/%m/%Y"))
@@ -84,10 +85,42 @@ Enfeffort['weeks'] <- enfweeks
 Enfeffort['count'] <- 1
 #Enfeffort$Code=as.numeric(paste0(Enfeffort$Cometido,Enfeffort$Year)) DONT CONSIDER FOR NOW
 #Enfeffort=Enfeffort %>% distinct(Code, .keep_all = TRUE) ####DONT CONSIDER FOR NOW
-EnforcementperWeekMean <- round(aggregate(Enfeffort$count ~ Enfeffort$weeks, data = Enfeffort, FUN = sum))
-EnforcementperWeekMean$`Enfeffort$count`=(EnforcementperWeekMean$`Enfeffort$count`)/6
-plot(EnforcementperWeekMean$`Enfeffort$count`)
+#EnforcementperWeekMean <- round(aggregate(Enfeffort$count ~ Enfeffort$weeks, data = Enfeffort, FUN = sum))
+#EnforcementperWeekMean$`Enfeffort$count`=(EnforcementperWeekMean$`Enfeffort$count`)/6
+#plot(EnforcementperWeekMean$`Enfeffort$count`)
 
-###This is the grand mean, with no SD. If we need SD I would need to do something different, just let me know
+#2014
+Enf2014=filter(Enfeffort,Enfeffort$Year ==14)
+EnfWeekMean14 <- round(aggregate(Enf2014$count ~ Enf2014$weeks, data = Enf2014, FUN = sum))
+
+#2015
+Enf2015=filter(Enfeffort,Enfeffort$Year ==15)
+EnfWeekMean15 <- round(aggregate(Enf2015$count ~ Enf2015$weeks, data = Enf2015, FUN = sum))
+
+#2016
+Enf2016=filter(Enfeffort,Enfeffort$Year ==16)
+EnfWeekMean16 <- round(aggregate(Enf2016$count ~ Enf2016$weeks, data = Enf2016, FUN = sum))
+
+#2017
+Enf2017=filter(Enfeffort,Enfeffort$Year ==17)
+EnfWeekMean17 <- round(aggregate(Enf2017$count ~ Enf2017$weeks, data = Enf2017, FUN = sum))
+
+#2018
+Enf2018=filter(Enfeffort,Enfeffort$Year ==18)
+EnfWeekMean18 <- round(aggregate(Enf2018$count ~ Enf2018$weeks, data = Enf2018, FUN = sum))
+
+#2019
+Enf2019=filter(Enfeffort,Enfeffort$Year ==19)
+EnfWeekMean19 <- round(aggregate(Enf2019$count ~ Enf2019$weeks, data = Enf2019, FUN = sum))
+
+###Because I dont know how to put them together (cause they have different lenghts, I will export to excel and combine them there)
+
+write.csv(EnfWeekMean14, "~/OneDrive - Nexus365/Market Framework Chapter/Encuestas Analysis and Background/Enf14.csv")
+write.csv(EnfWeekMean15, "~/OneDrive - Nexus365/Market Framework Chapter/Encuestas Analysis and Background/Enf15.csv")
+write.csv(EnfWeekMean16, "~/OneDrive - Nexus365/Market Framework Chapter/Encuestas Analysis and Background/Enf16.csv")
+write.csv(EnfWeekMean17, "~/OneDrive - Nexus365/Market Framework Chapter/Encuestas Analysis and Background/Enf17.csv")
+write.csv(EnfWeekMean18, "~/OneDrive - Nexus365/Market Framework Chapter/Encuestas Analysis and Background/Enf18.csv")
+write.csv(EnfWeekMean19, "~/OneDrive - Nexus365/Market Framework Chapter/Encuestas Analysis and Background/Enf19.csv")
+
 
 
