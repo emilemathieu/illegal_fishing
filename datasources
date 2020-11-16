@@ -71,8 +71,12 @@ ofdata[1:weeks,9]=ofdata[1:weeks,7]-Landings$SD
 plot(ofdata[,7])
 
 #####Second one is enforcement
-####Enforcement#### Only on VII region, filter by cometido
+###
+####Enforcement#### Only on VII region, exluding month 9 (september)
+#This is where I store the file. I uploaded this file as Enforcement Data
 Enfeffort <- read.csv("~/OneDrive - Nexus365/Market Framework Chapter/Encuestas Analysis and Background/EnforcementData.csv")
+
+##All this is is filtering and doing the sum calculation
 Enfeffort = filter(Enfeffort,Enfeffort$Especie =="Merluza común Artesanal IV a 41 28.6 LS")
 Date <- (Enfeffort$Fecha)
 Month=as.numeric(substring(Date,4,5))
@@ -87,6 +91,7 @@ Enfeffort=Enfeffort %>% distinct(Code, .keep_all = TRUE) ####Change if you want 
 Enfeffort = filter(Enfeffort,Enfeffort$Month !=9)
 Enfeffort = filter(Enfeffort,Enfeffort$Región =="Maule")
 EnforcementperWeekMean <- round(aggregate(Enfeffort$count ~ Enfeffort$weeks, data = Enfeffort, FUN = sum))
+####This is the thing we want, the mean of number of enforcement actions per week
 EnforcementperWeekMean$`Enfeffort$count`=(EnforcementperWeekMean$`Enfeffort$count`)/6
 plot(EnforcementperWeekmean$`Enfeffort$count`)
 
