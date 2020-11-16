@@ -3,11 +3,14 @@ title: "R Notebook"
 output: html_notebook
 ---
 ```{r}
+library("bayesplot")
+library("ggplot2")
 library("rstan") # observe startup messages
 options(mc.cores = parallel::detectCores())
 rstan_options(auto_write = TRUE)
 ```
 
+# Parameters required for optimal strategy
 ```{r}
 ###Value (in chilean pesos) of the permit that traders pay to fishers per legal unit
 visa=3000    
@@ -21,20 +24,56 @@ pbox=17000  ### Illegal price of reference at market per unit: This comes from m
 fb=9.2e+05 ## fine expected per box, from chilean law
 ```
 
-Can debug stan models with `stanc('filename.stan')`
 
+# Yearly model with 1 observation
 ```{r}
 data <- list(quota=quota, daysop=200, ppmax=6000, DR=5e-05, wbox=wbox, pbox=pbox, visa=visa, fb=fb)
-fit <- stan(file='illegal_fishing.stan', data=data, iter=11000, warmup=1000, chains=4, seed=0, refresh=11000, control = list(adapt_delta = 0.99))
+fit <- stan(file='yearly_1obs.stan', data=data, iter=11000, warmup=1000, chains=4, seed=0, refresh=11000, control = list(adapt_delta = 0.99))
 print(fit)
 ```
 
+# Plot posterior distributions
 ```{r}
-library("bayesplot")
-library("ggplot2")
 stan_dens(fit)
-plot(density(posterior$pp), main="Price Premium")
-plot(density(posterior$D), main="Detectability")
-plot(density(posterior$nR), main="Total landings")
+posterior <- as.matrix(fit)
+plot(density(posterior[, "pp"]), main="Price Premium")
+plot(density(posterior[, "D"]), main="Detectability")
+plot(density(posterior[, "nR"]), main="Total landings")
 ```
-quota
+
+# Yearly model with 1 observation per year
+```{r}
+years = 6
+weekly_landings <- read.csv("data/weekly_landings.csv")[, 1:years]
+weeks = dim(weekly_landings)[1]
+yearly_landings = colMeans(weekly_landings[1:weeks,], na.rm = TRUE) * weeks
+sigma = sd(yearly_landings)
+```
+```{r}
+data <- list(N=6, landings=yearly_landings, sigma=sigma, ppmax=6000, DR=5e-05, wbox=wbox, pbox=pbox, visa=visa, fb=fb)
+fit <- stan(file='yearly.stan', data=data, iter=11000, warmup=1000, chains=4, seed=0, refresh=11000, control = list(adapt_delta = 0.99))
+print(fit)
+stan_dens(fit)
+```
+
+# Weekly model
+```{r}
+years = 6
+weekly_landings <- read.csv("data/weekly_landings.csv")
+weekly_landings = weekly_landings[1:48, 1:years]
+weeks = dim(weekly_landings)[1]
+sigma = apply(weekly_landings, 1, sd, na.rm = TRUE)
+datadatasrouces <- read.csv("data/DataSources.csv")
+```
+# WIP...
+```{r}
+data <- list(Y=years, W=weeks, landings=t(weekly_landings), sigma=sigma, ppmax=6000, DR=5e-05, wbox=wbox, pbox=pbox, visa=visa, fb=fb)
+# r <- rstan::stanc(file = "weekly.stan")
+tempdir()
+fit <- stan(file='weekly.stan', data=data, iter=11000, warmup=1000, chains=1, seed=0, refresh=11000, control = list(adapt_delta = 0.99))
+# Get the following and cannot find why...
+# Error in sampler$call_sampler(args_list[[i]]) : " "  c++ exception (unknown reason)"                
+# error occurred during calling the sampler; sampling not done
+# seems to be related to https://github.com/stan-dev/rstan/issues/709
+print(fit)
+```
