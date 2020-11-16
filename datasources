@@ -1,0 +1,68 @@
+###Code with other sources of data
+
+
+#####First one is landings#####
+
+####Packages needed
+library(zoo)
+library(xts)
+library(lubridate)
+####
+
+####Load data set. I have it in my mac in this location, but in GitHub is called landings
+dataland <- read.csv("~/OneDrive - Nexus365/Market Framework Chapter/Encuestas Analysis and Background/dataland.csv")
+
+###Here I define the year as having 50 weeks because that's the number of weeks for a "normal" year" (I exclude september from the analysis cause there is a ban on fishing)
+weeks=50
+
+#######Here I identify to which week number each register for each year belongs to and add that to the dataset 
+X19 <- (dataland$X19Z)
+week19=week(as.POSIXlt(X19, format="%d/%m/%Y"))
+dataland['weeks19'] <- week19
+
+X18 <- (dataland$X18Z)
+week18=week(as.POSIXlt(X18, format="%d/%m/%Y"))
+dataland['weeks18'] <- week18
+
+X17 <- (dataland$X17Z)
+week17=week(as.POSIXlt(X17, format="%d/%m/%Y"))
+dataland['weeks17'] <- week17
+
+X16 <- (dataland$X16Z)
+week16=week(as.POSIXlt(X16, format="%d/%m/%Y"))
+dataland['weeks16'] <- week16
+
+X15 <- (dataland$X15Z)
+week15=week(as.POSIXlt(X15, format="%d/%m/%Y"))
+dataland['weeks15'] <- week15
+
+X14 <- (dataland$X14Z)
+week14=week(as.POSIXlt(X14, format="%d/%m/%Y"))
+dataland['weeks14'] <- week14
+
+###This conversion is just because years 2014 and 2015 the original data set is is kg, not boxes
+L14= dataland$X15C/27*1000
+L15= dataland$X15C/27*1000
+
+###Here what I do is to aggregate landings data per week for each year
+land19 <- round(aggregate(dataland$X19C ~ dataland$weeks19, data = dataland, FUN = sum))
+land18 <- aggregate(dataland$X18C ~ dataland$weeks18, data = dataland, FUN = sum)
+land17 <- aggregate(dataland$X17C ~ dataland$weeks17, data = dataland, FUN = sum,drop=FALSE)
+land16 <- aggregate(dataland$X16C ~ dataland$weeks16, data = dataland, FUN = sum)
+land15 <- round(aggregate(L15 ~ dataland$weeks15, data = dataland, FUN = sum))
+land14 <- round(aggregate(L14 ~ dataland$weeks14, data = dataland, FUN = sum))
+
+###Here I aggregate this in a dataset 
+ofdata=matrix(0,weeks,9)
+ofdata[1:weeks,1]=land19$`dataland$X19C`[1:weeks]
+ofdata[1:weeks,2]=land18$`dataland$X18C`[1:weeks]
+ofdata[1:weeks,3]=land17$`dataland$X17C`[1:weeks]
+ofdata[1:weeks,4]=land16$`dataland$X16C`[1:weeks]
+ofdata[1:weeks,5]=land15$L15[1:weeks]
+ofdata[1:weeks,6]=land14$L14[1:weeks]
+
+####And calculate mean and SD
+ofdata[1:weeks,7]=round(rowMeans(ofdata[,1:6],na.rm = TRUE))
+Landings=transform(ofdata[,1:6], SD=apply(ofdata[,1:6],1, sd, na.rm = TRUE))
+ofdata[1:weeks,8]=ofdata[1:weeks,7]+Landings$SD
+ofdata[1:weeks,9]=ofdata[1:weeks,7]-Landings$SD
