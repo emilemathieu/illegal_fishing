@@ -1,8 +1,7 @@
 ###Code with other sources of data
-###The idea is that you get a per week mean for landings and enforcement effort
+###The idea is that you get a per week mean  for landings, enforcement effort and prices at the port
 
 #####First one is landings#####
-
 ####Packages needed
 library(zoo)
 library(xts)
@@ -13,7 +12,7 @@ library(lubridate)
 dataland <- read.csv("~/OneDrive - Nexus365/Market Framework Chapter/Encuestas Analysis and Background/dataland.csv")
 
 ###Here I define the year as having 50 weeks because that's the number of weeks for a "normal" year" (I exclude september from the analysis cause there is a ban on fishing)
-weeks=50
+weeks=49
 
 #######Here I identify to which week number each register for each year belongs to and add that to the dataset 
 X19 <- (dataland$X19Z)
@@ -67,40 +66,28 @@ Landings=transform(ofdata[,1:6], SD=apply(ofdata[,1:6],1, sd, na.rm = TRUE))
 ofdata[1:weeks,8]=ofdata[1:weeks,7]+Landings$SD
 ofdata[1:weeks,9]=ofdata[1:weeks,7]-Landings$SD
 
-#ofdata[,7] is the mean of landings per month
 plot(ofdata[,7])
 
 #####Second one is enforcement
-###
-####Enforcement#### Only on VII region, exluding month 9 (september)
-#This is where I store the file. I uploaded this file as Enforcement Data
+####Enforcement#### Only on VII region, filter by cometido
 Enfeffort <- read.csv("~/OneDrive - Nexus365/Market Framework Chapter/Encuestas Analysis and Background/EnforcementData.csv")
-
-##All this is is filtering and doing the sum calculation
 Enfeffort = filter(Enfeffort,Enfeffort$Especie =="Merluza común Artesanal IV a 41 28.6 LS")
+Enfeffort = filter(Enfeffort,Enfeffort$Región =="Maule")
 Date <- (Enfeffort$Fecha)
 Month=as.numeric(substring(Date,4,5))
 Year=substring(Date,9,10)
 Enfeffort$Month=Month
-date=date(as.POSIXlt(Date, format="%d/%m/%Y"))
+Enfeffort = filter(Enfeffort,Enfeffort$Month !=9)
+Date <- (Enfeffort$Fecha)
 enfweeks=week(as.POSIXlt(Date, format="%d/%m/%Y"))
 Enfeffort['weeks'] <- enfweeks
 Enfeffort['count'] <- 1
-Enfeffort$Code=as.numeric(paste0(Enfeffort$Cometido,Enfeffort$Year))
-Enfeffort=Enfeffort %>% distinct(Code, .keep_all = TRUE) ####Change if you want all actions
-Enfeffort = filter(Enfeffort,Enfeffort$Month !=9)
-Enfeffort = filter(Enfeffort,Enfeffort$Región =="Maule")
+#Enfeffort$Code=as.numeric(paste0(Enfeffort$Cometido,Enfeffort$Year)) DONT CONSIDER FOR NOW
+#Enfeffort=Enfeffort %>% distinct(Code, .keep_all = TRUE) ####DONT CONSIDER FOR NOW
 EnforcementperWeekMean <- round(aggregate(Enfeffort$count ~ Enfeffort$weeks, data = Enfeffort, FUN = sum))
-####This is the thing we want, the mean of number of enforcement actions per week
 EnforcementperWeekMean$`Enfeffort$count`=(EnforcementperWeekMean$`Enfeffort$count`)/6
-plot(EnforcementperWeekmean$`Enfeffort$count`)
+plot(EnforcementperWeekMean$`Enfeffort$count`)
 
-###EnforcementperWeekMean is the grand mean, with no SD. If we need SD I would need to do something different, just let me know
-
-
-
-
-
-
+###This is the grand mean, with no SD. If we need SD I would need to do something different, just let me know
 
 
