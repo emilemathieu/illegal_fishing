@@ -7,9 +7,11 @@ library(zoo)
 library(xts)
 library(lubridate)
 ####
+#setwd("~/code/illegal_fishing")
 
 ####Load data set. I have it in my mac in this location, but in GitHub is called landings
 dataland <- read.csv("~/OneDrive - Nexus365/Market Framework Chapter/Encuestas Analysis and Background/dataland.csv")
+# dataland <- read.csv("data/dataland.csv")
 
 ###Here I define the year as having 50 weeks because that's the number of weeks for a "normal" year" (I exclude september from the analysis cause there is a ban on fishing)
 weeks=49
@@ -52,25 +54,31 @@ land15 <- round(aggregate(L15 ~ dataland$weeks15, data = dataland, FUN = sum))
 land14 <- round(aggregate(L14 ~ dataland$weeks14, data = dataland, FUN = sum))
 
 ###Here I aggregate this in a dataset 
-ofdata=matrix(0,weeks,9)
-ofdata[1:weeks,1]=land19$`dataland$X19C`[1:weeks]
-ofdata[1:weeks,2]=land18$`dataland$X18C`[1:weeks]
-ofdata[1:weeks,3]=land17$`dataland$X17C`[1:weeks]
-ofdata[1:weeks,4]=land16$`dataland$X16C`[1:weeks]
-ofdata[1:weeks,5]=land15$L15[1:weeks]
-ofdata[1:weeks,6]=land14$L14[1:weeks]
+weekly_landings=matrix(0,weeks,9)
+weekly_landings[1:weeks,1]=land19$`dataland$X19C`[1:weeks]
+weekly_landings[1:weeks,2]=land18$`dataland$X18C`[1:weeks]
+weekly_landings[1:weeks,3]=land17$`dataland$X17C`[1:weeks]
+weekly_landings[1:weeks,4]=land16$`dataland$X16C`[1:weeks]
+weekly_landings[1:weeks,5]=land15$L15[1:weeks]
+weekly_landings[1:weeks,6]=land14$L14[1:weeks]
 
 ####And calculate mean and SD
-ofdata[1:weeks,7]=round(rowMeans(ofdata[,1:6],na.rm = TRUE))
-Landings=transform(ofdata[,1:6], SD=apply(ofdata[,1:6],1, sd, na.rm = TRUE))
-ofdata[1:weeks,8]=ofdata[1:weeks,7]+Landings$SD
-ofdata[1:weeks,9]=ofdata[1:weeks,7]-Landings$SD
+weekly_landings[1:weeks,7]=round(rowMeans(weekly_landings[,1:6],na.rm = TRUE))
+Landings=transform(weekly_landings[,1:6], SD=apply(weekly_landings[,1:6],1, sd, na.rm = TRUE))
+weekly_landings[1:weeks,8]=weekly_landings[1:weeks,7]+Landings$SD
+weekly_landings[1:weeks,9]=weekly_landings[1:weeks,7]-Landings$SD
 
-plot(ofdata[,7])
+plot(weekly_landings[,7])
 
-#####Second one is enforcement####
-####Enforcement#### Only on VII region, filter by cometido
+colnames(weekly_landings) <- c("2019", "2018", "2017", "2016", "2015", "2014", "mean", "mean+std", "mean-std")
+write.csv(weekly_landings,"data/weekly_landings.csv", row.names = FALSE)
+
+####Enforcement#### Only on VII region, exluding month 9 (september)
+#This is where I store the file. I uploaded this file as Enforcement Data
 Enfeffort <- read.csv("~/OneDrive - Nexus365/Market Framework Chapter/Encuestas Analysis and Background/EnforcementData.csv")
+# Enfeffort <- read.csv("data/EnforcementData.csv")
+
+##All this is is filtering and doing the sum calculation
 Enfeffort = filter(Enfeffort,Enfeffort$Especie =="Merluza común Artesanal IV a 41 28.6 LS")
 Enfeffort = filter(Enfeffort,Enfeffort$Región =="Maule")
 Date <- (Enfeffort$Fecha)
