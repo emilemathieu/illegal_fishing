@@ -1,4 +1,3 @@
-// The input data is a vector 'y' of length 'N'.
 data {
   int<lower=0> N; // nb of years
   vector<lower=0>[N] landings;
@@ -55,4 +54,3 @@ transformed parameters {
 model {
   landings ~ normal(totallegal, sigma);
 }
-
