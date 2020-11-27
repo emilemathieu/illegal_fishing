@@ -14,12 +14,13 @@ library(plyr)
 library(DescTools)
 
 
+####
 ###########Pre-set parameters
 ####
 #Number of iterations for ABC Step 1
-iterations=10000000
+iterations=1000000
 ###Updates is the number of times it updates the prior from the previous posterior (basically, the number of times it does the whole process)
-updates=2 
+updates=3
 
 # % difference of quota: The criteria for selection/rejection of the iterations 
 cut=10
@@ -44,15 +45,15 @@ weeks=48 ####Weeks in a normal year excluding September
 quota=(3200000/27) ### 3200 ton quota in 2018. Divided in 27 because "units" are 27 kg boxes
 
 ###Landings prior per day of operation
-nmin=(quota/weeks) *3    ### landings lower limit: 3X the legal quota is from one of our papers
+nmin=(quota/weeks)*3    ### landings lower limit: 3X the legal quota is from one of our papers
 nmax=(27000000/27)/weeks ##landings higher limit: 27,4K ton is from our paper as well
 nmean=(nmin+nmax)/2
 
 ####PRIOR range for detectability (probability of detection per unit)
 Dmin= 0     ### detectability lower limit, no detectability
 ###For the higher limit I calculate the Detectability that would result in only 1% of illegal units (its 1 because with 0 its harder to solve the equation), considering mean values of price premium and landings
-Dmax= (pbox-wbox-(pbox+ppmean)+(wbox+visa))/((nmean*(pbox+ppmean))+fb) ###This equation is the same than than the one used to calculate the optimal rate, but solving for D when X is all landings (from the mean of prior)
-
+Dmax= (pbox-wbox-(pbox+ppmean)+(wbox+visa))/(((nmean*0.67)*(pbox+ppmean))+fb) ###This equation is the same than than the one used to calculate the optimal rate, but solving for D when x is 0.67 (which is the value we use to calculate nmin and comes from data collected)
+##We could maybe adapt this using the iterations within the look so that ppmean and nmean are more representative of the posteriors
 
 ###Creates matrix for results
 updating=matrix(0,iterations,updates*5)
@@ -63,7 +64,7 @@ updating=as.data.frame(updating)
 for (update in 1:updates) ### Start iterations
 {
   ###These are functions to obtain a random draw for each parameter based on min and max set before
-  ppI=rtruncnorm(n=iterations,   a=ppmin,  b=ppmax, mean=((pmean)/2),  sd=100000)
+  ppI=rtruncnorm(n=iterations,   a=ppmin,  b=ppmax, mean=((ppmean)/2),  sd=100000)
   DI = rtruncnorm(n=iterations, a=Dmin, b=Dmax, mean=((Dmin+Dmax)/2), sd=1)
   nRI=rtruncnorm(n=iterations,   a=nmin,  b=nmax, mean=((nmin+nmax)/2),  sd=10000000)
   
@@ -166,7 +167,7 @@ plot(DataFinal[,9],DataFinal[,8])
 ##Plot the distributions
 #First create density probability distribution from the data, then plot that
 ###Detectability
-DDetIn=density(Detectability, n=iterations, from=Dmin, to=Dmax,adjust=3)
+DDetIn=density(Detectability, n=iterations, adjust=3)
 yDetecIN=DDetIn$y
 xDetecIN=DDetIn$x
 plot(xDetecIN,yDetecIN, type="l",xlab="Detectability",ylab="Probability Density")
@@ -186,9 +187,9 @@ Pprior=max(DPPIn$y)
 plot(xPPIN,yPPIN, type="l",xlab="PricePremium",ylab="Probability Density")
 
 
-
 ###Write a csv file to save data from ABC Step 1
 write.csv(Posteriors, file="~/OneDrive - Nexus365/Trade Model Chapter/generateddata.csv")
+
 
 
 #####ABC Step 2#############################################################################################
