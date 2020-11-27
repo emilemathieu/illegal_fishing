@@ -1,4 +1,4 @@
-## [Colab](https://colab.research.google.com/drive/1e2gjYbYl9vI1JosuVsvGrucdqNJqM_mf#scrollTo=la0a3fUFKRUE)
+## [Colab](https://colab.research.google.com/github/emilemathieu/illegal_fishing/blob/master/yearly.ipynb)
 
 ## Python setup
 Install Conda: https://docs.conda.io/projects/conda/en/latest/user-guide/install/
