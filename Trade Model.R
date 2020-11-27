@@ -14,62 +14,56 @@ library(plyr)
 library(DescTools)
 
 
-#####ABC Step 1##############################################################################################
-####
 ###########Pre-set parameters
 ####
 #Number of iterations for ABC Step 1
-iterations=100000
+iterations=10000000
+###Updates is the number of times it updates the prior from the previous posterior (basically, the number of times it does the whole process)
+updates=2 
+
 # % difference of quota: The criteria for selection/rejection of the iterations 
 cut=10
 
 ###Value (in chilean pesos) of the permit that traders pay to fishers per legal unit
-visa=3000    
+visa=3000   
+wbox=5000   ### Illegal price of reference at the port per unit: This comes from my fieldwork 1
+pbox=17000  ### Illegal price of reference at market per unit: This comes from my fieldwork 2
+fb=9.2e+05 ## fine expected per box, from chilean law
+cost=100 ####per box...sort of unknown, but I dont think this matters much because costs are equal for legal and illegl boxes
 
 ####PRIORs for three unknown parameters: price premium, detectability and landings
 ###
 ####PRIOR range for price premium parameter (value that traders receive for a legal unit)
 ppmin=0    ### price premium lower limit
-ppmax=6000 ### price premium higher limit (unrealistically high)
-
-####PRIOR range for detectability (probability of detection per unit)
-DR=  5e-05   ### This comes from enforcement records data, probability of detection per box
-Dmin= 0     ### detectability lower limit
-Dmax= DR*3  ### detectability higher limit
+ppmean=1500
+#ppmean=2600 ##you can also use this value which is more common in posterior dist
+ppmax=3000 ###price premium higher limit, otherwise it goes over visa en then optimal is all legal
 
 ####PRIOR range for landings (total units landed each year, considering legal and illegal)
-###Since the landing distribution that I want for ABC Step 2 is per day, first I need to calculate how many days fishers operate
-daysop=200 ####This comes from government data
+weeks=48 ####Weeks in a normal year excluding September
 quota=(3200000/27) ### 3200 ton quota in 2018. Divided in 27 because "units" are 27 kg boxes
 
 ###Landings prior per day of operation
-nmin=(quota/daysop)   ### landings lower limit: 3X the legal quota is from one of our papers
-nmax=(27000000/27)/daysop ##landings higher limit: 27,4K ton is from our paper as well
+nmin=(quota/weeks) *3    ### landings lower limit: 3X the legal quota is from one of our papers
+nmax=(27000000/27)/weeks ##landings higher limit: 27,4K ton is from our paper as well
+nmean=(nmin+nmax)/2
 
-##Because nmin and nmax are in units, "boxtoton" transforms back to tons later if needed 
-boxtoton=(daysop*27)
+####PRIOR range for detectability (probability of detection per unit)
+Dmin= 0     ### detectability lower limit, no detectability
+###For the higher limit I calculate the Detectability that would result in only 1% of illegal units (its 1 because with 0 its harder to solve the equation), considering mean values of price premium and landings
+Dmax= (pbox-wbox-(pbox+ppmean)+(wbox+visa))/((nmean*(pbox+ppmean))+fb) ###This equation is the same than than the one used to calculate the optimal rate, but solving for D when X is all landings (from the mean of prior)
 
-###Updates is the number of times it updates the prior from the previous posterior (basically, the number of times it does the whole process)
-updates=2
 
 ###Creates matrix for results
 updating=matrix(0,iterations,updates*5)
 updating=as.data.frame(updating)
-
-###Other fix parameters needed for the model
-
-wbox=5000   ### Illegal price of reference at the port per unit: This comes from my fieldwork 1
-pbox=17000  ### Illegal price of reference at market per unit: This comes from my fieldwork 2
-
-fb=9.2e+05 ## fine expected per box, from chilean law
-
 
 #####Loop function for ABC Step 1
 ###Here I start the loop for updates, and within that one there is the one with iterations
 for (update in 1:updates) ### Start iterations
 {
   ###These are functions to obtain a random draw for each parameter based on min and max set before
-  ppI=rtruncnorm(n=iterations,   a=ppmin,  b=ppmax, mean=((ppmin+ppmax)/2),  sd=100000)
+  ppI=rtruncnorm(n=iterations,   a=ppmin,  b=ppmax, mean=((pmean)/2),  sd=100000)
   DI = rtruncnorm(n=iterations, a=Dmin, b=Dmax, mean=((Dmin+Dmax)/2), sd=1)
   nRI=rtruncnorm(n=iterations,   a=nmin,  b=nmax, mean=((nmin+nmax)/2),  sd=10000000)
   
@@ -78,8 +72,8 @@ for (update in 1:updates) ### Start iterations
   DPrior=if(update<=1) {DI} else if (update<=2) {Detectability} else if (update<=3) {Detectability}
   NPrior=if(update<=1) {nRI} else if (update<=2) {AvLand} else if (update<=3) {AvLand}
   
-
-  reality=matrix(0,iterations,6)  ##This creates the matrix for the iterations (sorry for the name!)
+  
+  reality=matrix(0,iterations,9)  ##This creates the matrix for the iterations (sorry for the name!)
   
   ### For loop to start iterations
   for (sim in 1:iterations) 
@@ -88,7 +82,7 @@ for (update in 1:updates) ### Start iterations
     pp=sample(PPPrior,1) 
     D=sample(DPrior,1)
     nR=sample(NPrior,1)
-
+    
     ###Model for one time period
     wl= wbox  + visa #Here, I add elasticity of demand at the port for legal, based on previous and current catch
     wi= wbox  #Here, I add elasticity of demand at the port for illegal, based on previous and current catch
@@ -96,12 +90,19 @@ for (update in 1:updates) ### Start iterations
     pi= pbox  #same for illegal 
     
     ##Function 6 in draft, calculates the optimal quantity of illegal units. Divided by 100 to convert to ratio
-    x=((((pi-wi-pl+wl-(fb*D))/(8*D*(pl)))))/100 ##Illegal units
-    l=1-x ###legal units
+    x=((((pi-wi-pl+wl-(fb*D))/(8*D*(pl)))))/nR ##Illegal units
+    ####
+    X=if(x<=1) {x} else {1} 
+    X=if(X<=0) {0} else {X} 
+    
+    l=1-X ###legal units
     
     ##Calculates the total (for a year)
-    totallegal=(nR*l)*daysop
-    totalillegal=(nR*x)*daysop
+    totallegal=(nR*l)*weeks
+    totalillegal=(nR*X)*weeks
+    
+    totalprofit=(totalillegal*(pi-wi)) + (totallegal*(pl-wl))- ((D* totalillegal)*((4*pl*totalillegal)+fb)) - ((totalillegal+ totallegal)*cost)
+    
     
     ##Fills the matrix with results
     reality[sim, 1]=((totallegal)-quota)/(quota)*100 ##this calculates the % of deviation of the iteration from the quota
@@ -110,14 +111,18 @@ for (update in 1:updates) ### Start iterations
     reality[sim, 4]=D ##keeps track of what random parameter the iteration used
     reality[sim, 5]=nR ##keeps track of what random parameter the iteration used
     reality[sim, 6]=totalillegal
-   
+    reality[sim, 7]=totallegal
+    reality[sim, 8]=totalprofit
+    reality[sim, 9]=X
+    
     ##here the loop of iterations finishes 
   }
   
   ###This filters the data so that only those iteration with legal units within the criteria are kept
   data=data.frame(reality)
-  Data=subset(data,data$X1<cut)
-  DataFinal=subset(Data,Data$X1>-cut)
+  Data=subset(data,data$X8>0)
+  Data2=subset(Data,Data$X1<cut)
+  DataFinal=subset(Data2,Data2$X1>-cut)
   
   ##Creates the variables from the filtered data
   PricePremium=DataFinal$X2 ##Price premium
@@ -153,6 +158,9 @@ for (update in 1:updates) ### Start iterations
   
   ### here the loop for the updates finish
 }
+
+plot(reality[,9],reality[,8])
+plot(DataFinal[,9],DataFinal[,8])
 
 ####
 ##Plot the distributions
