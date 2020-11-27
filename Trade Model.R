@@ -1,4 +1,4 @@
-####Code for trade model 
+####Code for trade model Version III gets rid of the trucks and days of operation and does everything in weeks
 ##First part is ABC Step 1: Here what I do is to obtain the distribution for unknown parameters (landings, price premium and detectability) from uninformed priors
 ##Second part is ABC Step 2: Using the distribution from Step 1 I run the model to obtain the set of optimal ratio strategies
 ##Then Ratios figure graph the different ratios distribution
@@ -14,6 +14,8 @@ library(plyr)
 library(DescTools)
 
 
+
+#####ABC Step 1##############################################################################################
 ####
 ###########Pre-set parameters
 ####
@@ -193,54 +195,51 @@ write.csv(Posteriors, file="~/OneDrive - Nexus365/Trade Model Chapter/generatedd
 
 
 #####ABC Step 2#############################################################################################
+#Loads Posterior distribution from step 1
+posteriors <- read.csv("~/OneDrive - Nexus365/Trade Model Chapter/generateddata.csv")
+AvLand=(posteriors$V2)
+PricePremium=posteriors$V3
+Detectability=posteriors$V1
 
 ###10000 iterations and 4 updates takes 14 minutes, at least on my mac
-iterations=100000
-updates=2
+iterations=10000
+updates=4
+cut=10
 
-#################Fixed Parameters
-pdlR=  -0.3  ### Price elasticity of quantity at market for legal products
-pdiR=  -0.3  ### Price elasticity of quantity at market for illegal products
-selR=  -0.45 ### Price elasticity of quantity at port for legal products. From my econometric analysis
-seiR=  -0.45 ### Price elasticity of quantity at port for illegal products. From my econometric analysis
+visa=3000   
+wbox=5000   ### Illegal price of reference at the port per unit: This comes from my fieldwork 1
+pbox=20000  ### Illegal price of reference at market per unit: This comes from my fieldwork 2
+fb=9.2e+05 ## fine expected per box, from chilean law
+weeks=48
+quota=(3200000/27) ### 3200 ton quota in 2018. Divided in 27 because "units" are 27 kg boxes
 
-ve= -0.5     ###  This is the elasticity of visa for End of year months
-le=  0.4     ### This is by how much the legal elasticity is multiplied for in eastern and pre post ban months
-he=  1.5     ### This is by how much the enforcement is multiplied for in the eastern months
+###
+###These are unknown variables (but for now I am treating them as if I knew the value). I only have data for selR, but all the rest are unknowns
+pdlR=  -0.47  ### Price elasticity of quantity at market for legal products
+pdiR=  -0.47  ### Price elasticity of quantity at market for illegal products
+selR=  -0.47  ### Price elasticity of quantity at port for legal products. From my econometric analysis
+seiR=  -0.47  ### Price elasticity of quantity at port for illegal products. From my econometric analysis
 
-cost=100 ####per box
+####
+###These are "by how much" things change in the different Seasons. These are completely unknown parameters, but again, I am treating them as if I knew. I only know, from surveys, that these thigs change in each season, but I don't know by how much
+ve= -0.6     ###  This is the elasticity of visa for End of year months
+le=  0.8     ### This is by how much the legal elasticity is multiplied for in eastern and pre post ban months
+he=  1.2     ### This is by how much the enforcement is multiplied for in the eastern months
+
+cost=100 ####per box...sort of unknown, but I dont think this matters much because costs are equal for legal and illegl boxes
+
+#Qr is the quantity reference for the elasticities. This is just necessary to calculate elasticities
+qr=mean(AvLand)
 
 ##Create matrix for results
 ratios=matrix(0,iterations,7)
 policies=matrix(0,iterations,18)
-
-#Qr is the quantity reference for the elasticities
-qr=min(AvLand)
-
-####Create TRUCKS characteristics
-
-minlegal=90 #sets whether trucks NEED to take legal units or need
-x1n=10  ### Number of type 1 trucks
-x2n=10  ### Number of type 2 trucks
-x3n=5   ### Number of type 3 trucks
-
-x1cap=60 #max capacity of type 1 trucks
-x2cap=150 #max capacity of trucks category 2
-x3cap=400 #max capacity of trucks category 3
-
-
-###Calculate total capacity of truck fleets
-capacity=(x1n*x1cap)+(x2n*x2cap)+(x3n*x3cap)
-Illcapacity=(x1n*x1IC)+(x2n*x2IC)+(x3n*x3IC)
-
-##Create matrix for results
 updating=matrix(0,iterations,updates*5)
 updating=as.data.frame(updating)
 
 ###Track time it takes to run
 start_time <- Sys.time()
 start_time
-
 
 ###Model#
 for (update in 1:updates) ### Start iterations
@@ -251,7 +250,6 @@ for (update in 1:updates) ### Start iterations
   r2I = rtruncnorm(n=iterations,a=0,    b=1, mean=0.5,sd=1)
   r3I = rtruncnorm(n=iterations,a=0,    b=1, mean=0.5,sd=1)
   r4I = rtruncnorm(n=iterations,a=0,    b=1, mean=0.5,sd=1)
-  
 
   ###Use random prior or previous posterior, depending on number of update
   r1prior=if(update<=1) {r1I} else  {A1}
@@ -264,32 +262,32 @@ for (update in 1:updates) ### Start iterations
   for (R in 1:iterations) ###Run time iterations
   {
     
-  ##Sample a ratio for each stage
+    ##Sample a ratio for each stage
     r1=sample(r1prior,1)
     r2=sample(r2prior,1)
     r3=sample(r3prior,1)
     r4=sample(r4prior,1)
     
-    ###These create strings to select what happens in each fortnight (11 months, because there is ban on fishing in September, so there are 22)
-    erres=                as.data.frame(rep(c(r1,r1,r1,r1, r2,  r2,  r1, r1,  r1,  r1,  r1,  r1,  r3, r3,   r3,   r1,   r1,  r1,  r4,   r4,  r4,  r1), each = daysop/20))
-    strategic=            as.data.frame(rep(c( 1, 1, 1, 1, he,  he,   1,  1,   1,   1,   1,   1,   1,  1,    1,    1,    1,   1,   1,    1,   1,   1), each = daysop/20))
-    elasticitiesLEGAL=    as.data.frame(rep(c( 1, 1, 1, 1, le,  le,   1,  1,   1,   1,   1,   1,  le,  le,   le,   1,    1,   1,   1,    1,   1,   1), each = daysop/20))
-    VISA=                 as.data.frame(rep(c( 0, 0, 0, 0,  0,   0,   0,  0,   0,   0,   0,   0,   0,   0,    0,    0,   0,   0,   1,    1,   1,   0), each = daysop/20))
-    elasticitiesILLEGAL=  as.data.frame(rep(c( 1, 1, 1, 1,  1,   1,   1,  1,   1,   1,   1,   1,   1,   1,    1,   1,    1,   1,   1,    1,   1,   1), each = daysop/20))
+    ###These create strings to select what happens in each stage
+    ##########################################J1  J2  F1  F2  S1   M1   M2   A1  A2   M1   M2   J1   J2   J1   J2    A1   A2   W1    O1   O1   N1    N2   D1   D2
+    erres=                as.data.frame(rep(c(r1, r1, r1, r1, r1,  r2,  r2,  r2, r1,  r1,  r1,  r1,  r1,  r1,  r1,   r3,  r3,  r3,   r3,  r3,  r3,   r3,  r3,  r4), each = 2))
+    strategic=            as.data.frame(rep(c( 1,  1,  1,  1,  1,  he,  he,  he,  1,   1,   1,   1,   1,   1,   1,    1,   1,   1,    1,   1,   1,    1,   1,   1), each = 2))
+    elasticitiesLEGAL=    as.data.frame(rep(c( 1,  1,  1,  1,  1,  le,  le,  le,  1,   1,   1,   1,   1,   1,   1,   le,  le,  le,   le,  le,  le,   le,  le,   1), each = 2))
+    VISA=                 as.data.frame(rep(c( 0,  0,  0,  0,  0,   0,   0,   0,  0,   0,   0,   0,   0,   0,   0,    0,   0,   0,    0,   0,   0,    0,   0,   1), each = 2))
+    elasticitiesILLEGAL=  as.data.frame(rep(c( 1,  1,  1,  1,  1,   1,   1,   1,  1,   1,   1,   1,   1,   1,   1,    1,   1,   1,    1,   1,   1,    1,   1,   1), each = 2))
+    
     ###Model
-    ti=daysop
+    ti=weeks
     Data=matrix(0,ti+1,14)
     
-
+    
     for (t in 1:ti) ###Run time iterations
     {
-      
       r=erres[t,1]
       enfm=strategic[t,1]
       n=(sample(AvLand,1))
       VisaR=VISA[t,1]
       
-      enfm=strategic[t,1]
       D =sample(Detectability,1)*enfm
       pp =sample(PricePremium,1)
       
@@ -302,57 +300,22 @@ for (update in 1:updates) ### Start iterations
       ill=r
       leg=(1-r)
       
-      x1leg=leg*x1cap
-      x1ill=ill*x1cap
-      
-      x2leg=leg*x2cap
-      x2ill=ill*x2cap
-      
-      x3leg=leg*x3cap
-      x3ill=ill*x3cap
-      
-      totalillegal=((x1n*x1ill)+(x2n*x2ill)+(x3n*x3ill))
-      totallegal=((x1n*x1leg)+(x2n*x2leg)+(x3n*x3leg))
-      
-      #Correction if it goes beyond landings
-      over=n-(totalillegal+totallegal)
-      factor=(if(over>0) {1} else over= 1+((over)/(totalillegal+totallegal)))
-      
-      ##Bring new trucks if there's no enough capacity
-      diff=n-capacity
-      Call=(if(diff>=0) {1} else 0) 
-      
-      newtrucks=round((diff/x1cap)*Call)
-      
-      totalillegal=(((x1n+newtrucks)*x1ill)+(x2n*x2ill)+(x3n*x3ill))*factor
-      totallegal=(((x1n+newtrucks)*x1leg)+(x2n*x2leg)+(x3n*x3leg))*factor
-      
-      realx1leg=x1leg*factor
-      realx1ill=x1ill*factor
-      
-      realx2leg=x2leg*factor
-      realx2ill=x2ill*factor
-      
-      realx3leg=x3leg*factor
-      realx3ill=x3ill*factor
-      
-      
       ####Calculate profit and final 
+      totallegal=leg*n
+      totalillegal=ill*n
+      
       quotaleft=(quota-totallegal-sum(Data[,3]))
       quotaleftR=if(quotaleft>0){quotaleft} else 0
       visaqf=(visa * (1-((-ve*((quota-quotaleftR)/quota)))))
       
       wl=   (wbox *  (1-((sel*((qr-n)/qr))))) + if(VisaR>0.5) {visaqf} else  visa            #Here, I add elasticity of demand at the port for legal, based on previos and current catch
-      wi=   (wbox *  (1-((sei*((qr-n)/qr))))) #Here, I add elasticity of demand at the port for illegal, based on previos and current catch
+      wi=   (wbox *  (1-((sei*((qr-n)/qr))))) #Here, I add elasticity of demand at the port for illegal, based on previous and current catch
       
-      pi=   (pbox  * (1-((pdi*((qr-n)/qr))))) #same for ilelgal 
+      pi=   (pbox  * (1-((pdi*((qr-n)/qr))))) #same for illegal 
       pl=   (pbox  * (1-((pdl*((qr-n)/qr))))) + pp
-      
-      profitx1=(realx1ill*(pi-wi))-((D*realx1ill)*(4*pl*realx1ill+fb))+(realx1leg*(pl-wl))-((realx1ill+realx1leg)*cost)
-      profitx2=(realx2ill*(pi-wi))-((D*realx2ill)*(4*pl*realx2ill+fb))+(realx2leg*(pl-wl))-((realx2ill+realx2leg)*cost)
-      profitx3=(realx3ill*(pi-wi))-((D*realx3ill)*(4*pl*realx3ill+fb))+(realx3leg*(pl-wl))-((realx3ill+realx3leg)*cost)
-      totalprofit=(profitx1*(x1n+newtrucks))+(profitx2*x2n)+(profitx3*x3n)
-      
+  
+      totalprofit=(totalillegal*(pi-wi))- ((D* totalillegal)*(4*pl*totalillegal+fb)) + (totallegal*(pl-wl))- ((totalillegal+ totallegal)*cost)
+ 
       Data[t,1]=totalprofit
       Data[t,2]=totallegal
       Data[t+1,3]=totallegal
@@ -365,8 +328,7 @@ for (update in 1:updates) ### Start iterations
       Data[t,10]=wl
       Data[t,11]=wi
       Data[t,12]=totallegal+totalillegal
-      Data[t,13]=newtrucks
-      
+     
     }
     ratios[R,1]=r1
     ratios[R,2]=r2
@@ -374,7 +336,7 @@ for (update in 1:updates) ### Start iterations
     ratios[R,4]=r4
     ratios[R,5]=((sum(Data[,2])-quota)/quota)*100
     ratios[R,6]=sum(Data[,1])
-    ratios[R,7]=sum(Data[,2])
+    ratios[R,7]=sum(Data[,6])
   }
   
   Policies=as.data.frame(ratios)
@@ -403,11 +365,15 @@ for (update in 1:updates) ### Start iterations
 end_time <- Sys.time()
 end_time - start_time
 
-#Histograms of ratios distribution
+
+
+
+#####Histograms of ratios distribution####
 hist(A1)
 hist(A2)
 hist(A3)
 hist(A4)
+
 
 #####Ratios Figure####
 ##Create PDFs from results
@@ -445,6 +411,140 @@ fig <- fig %>% add_trace(x = data$V8, y = data$V7, name = 'End of year', line = 
 fig <- fig %>% layout(xaxis = list(title = "Illegal/total catch ratio"))
 fig <- fig %>% layout(yaxis = list(title = "Probability Density"))
 fig <- fig %>% layout(legend = list(x =0.1, y = 0.9))
+fig
+
+
+
+
+#######Compare with data through time####
+####I am not explaining this in detail cause its just to create the graph, no analysis really
+Data=matrix(0,weeks,14)
+Rounds=length(A1)
+NNAS=matrix(0,weeks,Rounds+1)
+NNASI=matrix(0,weeks,Rounds+1)
+days=weeks
+Rmodels=as.data.frame(AF)
+ti=weeks
+
+for (R in 1:Rounds) ###Run time simulations
+{
+  r1=Rmodels[R,1]
+  r2=Rmodels[R,2]
+  r3=Rmodels[R,3]
+  r4=Rmodels[R,4]
+
+  
+  erres=                as.data.frame(rep(c(r1, r1, r1, r1, r1,  r2,  r2,  r2, r1,  r1,  r1,  r1,  r1,  r1,  r1,   r3,  r3,  r3,   r3,  r3,  r3,   r3,  r3,  r4), each = 2))
+  strategic=            as.data.frame(rep(c( 1,  1,  1,  1,  1,  he,  he,  he,  1,   1,   1,   1,   1,   1,   1,    1,   1,   1,    1,   1,   1,    1,   1,   1), each = 2))
+  elasticitiesLEGAL=    as.data.frame(rep(c( 1,  1,  1,  1,  1,  le,  le,  le,  1,   1,   1,   1,   1,   1,   1,   le,  le,  le,   le,  le,  le,   le,  le,   1), each = 2))
+  VISA=                 as.data.frame(rep(c( 0,  0,  0,  0,  0,   0,   0,   0,  0,   0,   0,   0,   0,   0,   0,    0,   0,   0,    0,   0,   0,    0,   0,   1), each = 2))
+  elasticitiesILLEGAL=  as.data.frame(rep(c( 1,  1,  1,  1,  1,   1,   1,   1,  1,   1,   1,   1,   1,   1,   1,    1,   1,   1,    1,   1,   1,    1,   1,   1), each = 2))
+  
+  for (t in 1:ti) ###Run time simulations
+  {
+
+    r=erres[t,1]
+    enfm=strategic[t,1]
+    VisaR=VISA[t,1]
+    D =sample(Detectability,1)*enfm
+    pp =sample(PricePremium,1)
+    n=(sample(AvLand,1))
+    pdl=pdlR*elasticitiesLEGAL[t,1]
+    pdi=pdiR*elasticitiesILLEGAL[t,1]
+    
+    sel=selR*elasticitiesLEGAL[t,1]
+    sei=seiR*elasticitiesILLEGAL[t,1]
+    
+    ill=r
+    leg=(1-r)
+    
+    ####Calculate profit and final 
+    totallegal=leg*n
+    totalillegal=ill*n
+    
+    quotaleft=(quota-totallegal-sum(Data[,3]))
+    quotaleftR=if(quotaleft>0){quotaleft} else 0
+    visaqf=(visa * (1-((-ve*((quota-quotaleftR)/quota)))))
+    
+    wl=   (wbox *  (1-((sel*((qr-n)/qr))))) + if(VisaR>0.5) {visaqf} else  visa            #Here, I add elasticity of demand at the port for legal, based on previos and current catch
+    wi=   (wbox *  (1-((sei*((qr-n)/qr))))) #Here, I add elasticity of demand at the port for illegal, based on previous and current catch
+    
+    pi=   (pbox  * (1-((pdi*((qr-n)/qr))))) #same for illegal 
+    pl=   (pbox  * (1-((pdl*((qr-n)/qr))))) + pp
+    
+    Data[t,1]=totalillegal
+    Data[t,2]=totallegal
+    
+  }
+  
+  NNASI[,R]=Data[,1]
+  NNAS[,R]=Data[,2]
+  
+  
+}
+
+sims=NNAS
+simsI=NNASI
+###Create data frame with landings data, mean and SD
+####I attached this data
+landingsdata <- read.csv("~/OneDrive - Nexus365/Trade Model Chapter/landingsdata.csv")
+
+ofdata=matrix(0,weeks,18)
+ofdata[1:weeks,6]=landingsdata$V1
+ofdata[1:weeks,7]=landingsdata$V2
+ofdata[1:weeks,8]=landingsdata$V3
+
+
+###Calculate means and SD for simulations Legal
+ofdata[1:weeks,12]=round(rowMeans(sims[,1:Rounds]))
+Model=transform(sims[,1:Rounds], SD=apply(sims[,1:Rounds],1, sd, na.rm = TRUE))
+ofdata[1:weeks,13]=ofdata[1:weeks,12]+Model$SD
+ofdata[1:weeks,14]=ofdata[1:weeks,12]-Model$SD
+
+
+###Calculate means and SD for simulations Illelgal
+ofdata[1:weeks,15]=round(rowMeans(simsI[,1:Rounds]))
+Model=transform(simsI[,1:Rounds], SD=apply(simsI[,1:Rounds],1, sd, na.rm = TRUE))
+ofdata[1:weeks,16]=ofdata[1:weeks,15]+Model$SD
+ofdata[1:weeks,17]=ofdata[1:weeks,15]-Model$SD
+Ofdata=as.data.frame((ofdata))
+Ofdata[is.na(Ofdata)] = 0 ###remember to change this!!!!!
+boxtoton=27/1000
+
+###Graph
+fig <- plot_ly(Ofdata, x = ~seq(1:weeks), y = ~Ofdata$V12*boxtoton, type = 'scatter', mode = 'lines',
+               line = list(color='rgb(0,100,80)'),
+               name = 'Legal Simulation Mean +/-SD') 
+fig <- fig %>% add_trace(y = ~Ofdata$V13*boxtoton, type = 'scatter', mode = 'lines',
+                         line = list(color = 'transparent'), name = 'High Landings',showlegend = FALSE) 
+
+fig <- fig %>% add_trace(y = ~Ofdata$V14*boxtoton, type = 'scatter', mode = 'lines',
+                         fill = 'tonexty', fillcolor='rgba(0,100,80,0.2)', line = list(color = 'transparent'),
+                         showlegend = FALSE, name = 'Low Landings')
+
+##Illegal
+fig <- fig%>% add_trace(Ofdata, x = ~seq(1:weeks), y = ~Ofdata$V16*boxtoton, type = 'scatter', mode = 'lines',line = list(color = 'transparent'),showlegend = FALSE, name = 'High Landings') 
+fig <- fig %>% add_trace(y = ~Ofdata$V17*boxtoton, type = 'scatter', mode = 'lines',fill = 'tonexty', fillcolor='rgba(220,20,60,0.2)', line = list(color = 'transparent'),showlegend = FALSE, name = 'Low Landings')
+fig <- fig %>% add_trace(y = ~Ofdata$V15*boxtoton, type = 'scatter', mode = 'lines',line = list(color='red'),name = 'Illegal Simulation Mean +/-SD') 
+##Illegal
+
+
+fig <- fig%>% add_trace(Ofdata, x = ~seq(1:weeks), y = ~Ofdata$V7*boxtoton, type = 'scatter', mode = 'lines',
+                        line = list(color = 'transparent'),
+                        showlegend = FALSE, name = 'High Landings') 
+fig <- fig %>% add_trace(y = ~Ofdata$V8*boxtoton, type = 'scatter', mode = 'lines',
+                         fill = 'tonexty', fillcolor='rgba(0,17,157,0.2)', line = list(color = 'transparent'),
+                         showlegend = FALSE, name = 'Low Landings')
+fig <- fig %>% add_trace(y = ~Ofdata$V6*boxtoton, type = 'scatter', mode = 'lines',
+                         line = list(color='blue'),
+                         name = 'Landings Mean (2014-2019) +/-SD') 
+#fig <- fig %>% add_trace(y = ~Ofdata$V1, line = list(color='black'),name = '2019 Landings') 
+fig <- fig %>% layout(showlegend = TRUE)
+fig <- fig %>% layout(xaxis = list(range = c(2,weeks)))
+fig <- fig %>% layout(yaxis = list(range = c(0,250)))
+fig <- fig %>% layout(xaxis = list(title = "Week"))
+fig <- fig %>% layout(legend = list(x =0.5, y = 1.1))
+fig <- fig %>% layout(yaxis = list(title = "Ton"))
 fig
 
 
