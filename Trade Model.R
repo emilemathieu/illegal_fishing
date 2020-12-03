@@ -13,14 +13,12 @@ library(plotly)
 library(plyr)
 library(DescTools)
 
-
-
 #####ABC Step 1##############################################################################################
 ####
 ###########Pre-set parameters
 ####
 #Number of iterations for ABC Step 1
-iterations=1000000
+iterations=10000000
 ###Updates is the number of times it updates the prior from the previous posterior (basically, the number of times it does the whole process)
 updates=3
 
@@ -29,34 +27,31 @@ cut=10
 
 ###Value (in chilean pesos) of the permit that traders pay to fishers per legal unit
 visa=3000   
-wbox=5000   ### Illegal price of reference at the port per unit: This comes from my fieldwork 1
-pbox=17000  ### Illegal price of reference at market per unit: This comes from my fieldwork 2
+C_i=5000   ### Illegal cost of reference at the port per unit: This comes from my fieldwork 1
+P_i=20000  ### Illegal price of reference at market per unit: This comes from my fieldwork 2
 fb=9.2e+05 ## fine expected per box, from chilean law
-cost=100 ####per box...sort of unknown, but I dont think this matters much because costs are equal for legal and illegl boxes
+cost=100 ####per box...sort of unknown, but I dont think this matters much because costs are equal for legal and illegal boxes
 
 ####PRIORs for three unknown parameters: price premium, detectability and landings
 ###
 ####PRIOR range for price premium parameter (value that traders receive for a legal unit)
-ppmin=0    ### price premium lower limit
-ppmean=1500
-#ppmean=2600 ##you can also use this value which is more common in posterior dist
-ppmax=3000 ###price premium higher limit, otherwise it goes over visa en then optimal is all legal
+beta_min=0   ### price premium lower limit
+beta_mean=1500
+beta_max=3000 ###price premium higher limit, otherwise it goes over visa en then optimal is all legal
 
 ####PRIOR range for landings (total units landed each year, considering legal and illegal)
 weeks=48 ####Weeks in a normal year excluding September
 quota=(3200000/27) ### 3200 ton quota in 2018. Divided in 27 because "units" are 27 kg boxes
 
 ###Landings prior per day of operation
-nmin=(quota/weeks)*3    ### landings lower limit: 3X the legal quota is from one of our papers
-nmax=(27000000/27)/weeks ##landings higher limit: 27,4K ton is from our paper as well
-nmean=(nmin+nmax)/2
+T_min=(quota/weeks)*3     ## landings lower limit: 3X the legal quota is from one of our papers
+T_max=(27000000/27)/weeks ##landings higher limit: 27,4K ton is from our paper as well
+T_mean=(T_min+T_max)/2
 
 ####PRIOR range for detectability (probability of detection per unit)
-Dmin= 0     ### detectability lower limit, no detectability
-###For the higher limit I calculate the Detectability that would result in only 1% of illegal units (its 1 because with 0 its harder to solve the equation), considering mean values of price premium and landings
-Dmax= (pbox-wbox-(pbox+ppmean)+(wbox+visa))/(((nmean*0.67)*(pbox+ppmean))+fb) ###This equation is the same than than the one used to calculate the optimal rate, but solving for D when x is 0.67 (which is the value we use to calculate nmin and comes from data collected)
-##We could maybe adapt this using the iterations within the look so that ppmean and nmean are more representative of the posteriors
-
+theta_min= 0     ### detectability lower limit, basically no detectability
+#theta_min=(pbox-wbox-(pbox+ppmean)+(wbox+visa))/(((nmean*1.2)*(pbox+ppmean))+fb)
+theta_max= (P_i-C_i-(P_i+beta_mean)+(C_i+visa))/(((T_mean*0.67)*(P_i+beta_mean))+fb) ###This equation is the same than than the one used to calculate the optimal rate, but solving for D when x is 0.67 (which is the value we use to calculate theta_min and comes from data collected)
 ###Creates matrix for results
 updating=matrix(0,iterations,updates*5)
 updating=as.data.frame(updating)
@@ -66,62 +61,66 @@ updating=as.data.frame(updating)
 for (update in 1:updates) ### Start iterations
 {
   ###These are functions to obtain a random draw for each parameter based on min and max set before
-  ppI=rtruncnorm(n=iterations,   a=ppmin,  b=ppmax, mean=((ppmean)/2),  sd=100000)
-  DI = rtruncnorm(n=iterations, a=Dmin, b=Dmax, mean=((Dmin+Dmax)/2), sd=1)
-  nRI=rtruncnorm(n=iterations,   a=nmin,  b=nmax, mean=((nmin+nmax)/2),  sd=10000000)
+  beta_I=rtruncnorm(n=iterations,   a=beta_min,  b=beta_max, mean=(beta_mean),  sd=100000)
+  theta_I = rtruncnorm(n=iterations, a=theta_min,  b=theta_max, mean=((theta_min+theta_max)/2), sd=1)
+  T_I=rtruncnorm(n=iterations,   a=T_min,  b=T_max, mean=((T_mean)),  sd=10000000)
   
   ##If function to tell the model whether to take the uninformed prior, or the anterior posterior (depending on the update round)
-  PPPrior=if(update<=1) {ppI} else if (update<=2) {PricePremium} else if (update<=3) {PricePremium}
-  DPrior=if(update<=1) {DI} else if (update<=2) {Detectability} else if (update<=3) {Detectability}
-  NPrior=if(update<=1) {nRI} else if (update<=2) {AvLand} else if (update<=3) {AvLand}
+beta_prior=if(update<=1) {beta_I} else if (update<=2) {PricePremium} else if (update<=3) {PricePremium}
+theta_prior=if(update<=1) {theta_I} else if (update<=2) {Detectability} else if (update<=3) {Detectability}
+T_prior=if(update<=1) {T_I} else if (update<=2) {AvLand} else if (update<=3) {AvLand}
   
-  
-  reality=matrix(0,iterations,9)  ##This creates the matrix for the iterations (sorry for the name!)
+reality=matrix(0,iterations,9)  ##This creates the matrix for the iterations (sorry for the name!)
   
   ### For loop to start iterations
   for (sim in 1:iterations) 
   {
     ###Take a random draw from the prior
-    pp=sample(PPPrior,1) 
-    D=sample(DPrior,1)
-    nR=sample(NPrior,1)
+    #
+   beta=sample(beta_prior,1) 
+   theta=sample(theta_prior,1)
+   T=sample(T_prior,1)
     
     ###Model for one time period
-    wl= wbox  + visa #Here, I add elasticity of demand at the port for legal, based on previous and current catch
-    wi= wbox  #Here, I add elasticity of demand at the port for illegal, based on previous and current catch
-    pl= pbox  + pp #same but at the market based on legal captures previous year
-    pi= pbox  #same for illegal 
+    #cost of box to trader at the port for:
+    #Legal
+     C_l= C_i  + visa 
+     
+    #price paid to trader at the market for:
+    #legal
+    P_l= P_i  + beta 
     
-    ##Function 6 in draft, calculates the optimal quantity of illegal units. Divided by 100 to convert to ratio
-    x=((((pi-wi-pl+wl-(fb*D))/(8*D*(pl)))))/nR ##Illegal units
-    ####
-    X=if(x<=1) {x} else {1} 
-    X=if(X<=0) {0} else {X} 
+    ##Function 6 in draft, calculates the optimal quantity of illegal units. Divided by n to convert to ratio
+    x_i=((((P_i-C_i-P_l+C_l-(fb*theta))/(8*theta*(P_l)))))/T ##Illegal units
     
-    l=1-X ###legal units
+    ####This sets the condition that x_i (illegal ratio) cannot be higher than 1 or less than 0
+    X_i=if(x_i<=1) {x_i} else {1} 
+    X_i=if(X_i<=0) {0} else {X_i} 
     
-    ##Calculates the total (for a year)
-    totallegal=(nR*l)*weeks
-    totalillegal=(nR*X)*weeks
+    x_l=1-X_i ###legal ratio
     
-    totalprofit=(totalillegal*(pi-wi)) + (totallegal*(pl-wl))- ((D* totalillegal)*((4*pl*totalillegal)+fb)) - ((totalillegal+ totallegal)*cost)
+    ##Calculates the total for a year of legal and illegal units, depending on the ratio
+    totallegal=(T*x_l)*weeks
+    totalillegal=(T*X_i)*weeks
     
+    #Caculates the profit 
+    totalprofit=(totalillegal*(P_i-C_i)) + (totallegal*(P_l-C_l))- ((theta* totalillegal)*((4*P_l*totalillegal)+fb)) - ((totalillegal+ totallegal)*cost)
     
     ##Fills the matrix with results
     reality[sim, 1]=((totallegal)-quota)/(quota)*100 ##this calculates the % of deviation of the iteration from the quota
-    reality[sim, 2]=pp ##keeps track of what random parameter the iteration used
+    reality[sim, 2]=beta ##keeps track of what random parameter the iteration used
     reality[sim, 3]=visa ##keeps track of what random parameter the iteration used
-    reality[sim, 4]=D ##keeps track of what random parameter the iteration used
-    reality[sim, 5]=nR ##keeps track of what random parameter the iteration used
+    reality[sim, 4]=theta ##keeps track of what random parameter the iteration used
+    reality[sim, 5]=T ##keeps track of what random parameter the iteration used
     reality[sim, 6]=totalillegal
     reality[sim, 7]=totallegal
     reality[sim, 8]=totalprofit
-    reality[sim, 9]=X
+    reality[sim, 9]=X_i
     
     ##here the loop of iterations finishes 
   }
   
-  ###This filters the data so that only those iteration with legal units within the criteria are kept
+  ###This filters the data so that only those where legal units are within +- 10% of quota, and profits are higher than 0
   data=data.frame(reality)
   Data=subset(data,data$X8>0)
   Data2=subset(Data,Data$X1<cut)
@@ -139,7 +138,7 @@ for (update in 1:updates) ### Start iterations
   Posteriors[,2]=AvLand
   Posteriors[,3]=PricePremium
   
-  ###THese create vectors with n=iteration of the filtered results, to be used for next prior
+  ###These create vectors with n=iteration of the filtered results, to be used for next prior
   DPP=density(PricePremium, n=iterations,adjust=3)
   DPricePremium=DPP$y
   xPricePremium=DPP$x
@@ -162,7 +161,7 @@ for (update in 1:updates) ### Start iterations
   ### here the loop for the updates finish
 }
 
-plot(reality[,9],reality[,8])
+#plot(reality[,9],reality[,8])
 plot(DataFinal[,9],DataFinal[,8])
 
 ####
@@ -175,7 +174,7 @@ xDetecIN=DDetIn$x
 plot(xDetecIN,yDetecIN, type="l",xlab="Detectability",ylab="Probability Density")
 
 ###Landings
-DLandIn=density(AvLand, n=iterations,adjust=3,from=nmin, to=nmax)
+DLandIn=density(AvLand, n=iterations,adjust=3,from=T_min, to=T_max)
 yLandIN=DLandIn$y
 xLandIN=DLandIn$x
 Lprior=max(yLandIN)
@@ -192,26 +191,25 @@ plot(xPPIN,yPPIN, type="l",xlab="PricePremium",ylab="Probability Density")
 ###Write a csv file to save data from ABC Step 1
 write.csv(Posteriors, file="~/OneDrive - Nexus365/Trade Model Chapter/generateddata.csv")
 
-
-
 #####ABC Step 2#############################################################################################
 #Loads Posterior distribution from step 1
 posteriors <- read.csv("~/OneDrive - Nexus365/Trade Model Chapter/generateddata.csv")
-AvLand=(posteriors$V2)
-PricePremium=posteriors$V3
-Detectability=posteriors$V1
+T_dist=(posteriors$V2)
+Beta=posteriors$V3
+Theta=posteriors$V1
 
 ###10000 iterations and 4 updates takes 14 minutes, at least on my mac
 iterations=10000
-updates=4
+updates=5
 cut=10
 
 visa=3000   
-wbox=5000   ### Illegal price of reference at the port per unit: This comes from my fieldwork 1
-pbox=20000  ### Illegal price of reference at market per unit: This comes from my fieldwork 2
+c_i=5000   ### Illegal price of reference at the port per unit: This comes from my fieldwork 1
+p_i=20000  ### Illegal price of reference at market per unit: This comes from my fieldwork 2
 fb=9.2e+05 ## fine expected per box, from chilean law
 weeks=48
 quota=(3200000/27) ### 3200 ton quota in 2018. Divided in 27 because "units" are 27 kg boxes
+
 
 ###
 ###These are unknown variables (but for now I am treating them as if I knew the value). I only have data for selR, but all the rest are unknowns
@@ -223,13 +221,20 @@ seiR=  -0.47  ### Price elasticity of quantity at port for illegal products. Fro
 ####
 ###These are "by how much" things change in the different Seasons. These are completely unknown parameters, but again, I am treating them as if I knew. I only know, from surveys, that these thigs change in each season, but I don't know by how much
 ve= -0.6     ###  This is the elasticity of visa for End of year months
-le=  0.8     ### This is by how much the legal elasticity is multiplied for in eastern and pre post ban months
-he=  1.2     ### This is by how much the enforcement is multiplied for in the eastern months
+le=  0.6     ### This is by how much the legal elasticity is multiplied for in eastern and pre post ban months
+he=  1.1     ### This is by how much the enforcement is multiplied for in the eastern months
+
+####Standards!
+###These are "by how much" things change in the different Seasons. These are completely unknown parameters, but again, I am treating them as if I knew. I only know, from surveys, that these thigs change in each season, but I don't know by how much
+#ve= -0.6     ###  This is the elasticity of visa for End of year months
+#le=  0.8     ### This is by how much the legal elasticity is multiplied for in eastern and pre post ban months
+#he=  1.2     ### This is by how much the enforcement is multiplied for in the eastern months
+
 
 cost=100 ####per box...sort of unknown, but I dont think this matters much because costs are equal for legal and illegl boxes
 
 #Qr is the quantity reference for the elasticities. This is just necessary to calculate elasticities
-qr=mean(AvLand)
+qr=mean(T_dist)
 
 ##Create matrix for results
 ratios=matrix(0,iterations,7)
@@ -250,7 +255,7 @@ for (update in 1:updates) ### Start iterations
   r2I = rtruncnorm(n=iterations,a=0,    b=1, mean=0.5,sd=1)
   r3I = rtruncnorm(n=iterations,a=0,    b=1, mean=0.5,sd=1)
   r4I = rtruncnorm(n=iterations,a=0,    b=1, mean=0.5,sd=1)
-
+  
   ###Use random prior or previous posterior, depending on number of update
   r1prior=if(update<=1) {r1I} else  {A1}
   r2prior=if(update<=1) {r2I} else  {A2}
@@ -285,11 +290,11 @@ for (update in 1:updates) ### Start iterations
     {
       r=erres[t,1]
       enfm=strategic[t,1]
-      n=(sample(AvLand,1))
+      T_week=(sample(T_dist,1))
       VisaR=VISA[t,1]
       
-      D =sample(Detectability,1)*enfm
-      pp =sample(PricePremium,1)
+      theta = sample(Theta,1)*enfm
+      beta =sample(Beta,1)
       
       pdl=pdlR*elasticitiesLEGAL[t,1]
       pdi=pdiR*elasticitiesILLEGAL[t,1]
@@ -301,34 +306,34 @@ for (update in 1:updates) ### Start iterations
       leg=(1-r)
       
       ####Calculate profit and final 
-      totallegal=leg*n
-      totalillegal=ill*n
+      totallegal=leg*T_week
+      totalillegal=ill*T_week
       
       quotaleft=(quota-totallegal-sum(Data[,3]))
       quotaleftR=if(quotaleft>0){quotaleft} else 0
       visaqf=(visa * (1-((-ve*((quota-quotaleftR)/quota)))))
       
-      wl=   (wbox *  (1-((sel*((qr-n)/qr))))) + if(VisaR>0.5) {visaqf} else  visa            #Here, I add elasticity of demand at the port for legal, based on previos and current catch
-      wi=   (wbox *  (1-((sei*((qr-n)/qr))))) #Here, I add elasticity of demand at the port for illegal, based on previous and current catch
+      C_L=   (c_i *  (1-((sel*((qr-T_week)/qr))))) + if(VisaR>0.5) {visaqf} else  visa            #Here, I add elasticity of demand at the port for legal, based on previos and current catch
+      C_I=   (c_i *  (1-((sei*((qr-T_week)/qr))))) #Here, I add elasticity of demand at the port for illegal, based on previous and current catch
       
-      pi=   (pbox  * (1-((pdi*((qr-n)/qr))))) #same for illegal 
-      pl=   (pbox  * (1-((pdl*((qr-n)/qr))))) + pp
-  
-      totalprofit=(totalillegal*(pi-wi))- ((D* totalillegal)*(4*pl*totalillegal+fb)) + (totallegal*(pl-wl))- ((totalillegal+ totallegal)*cost)
- 
+      P_L=   (p_i  * (1-((pdl*((qr-T_week)/qr))))) + beta
+      P_I=   (p_i  * (1-((pdi*((qr-T_week)/qr))))) #same for illegal 
+      
+      totalprofit=(totalillegal*P_I-C_I)- ((theta* totalillegal)*(4*P_L*totalillegal+fb)) + (totallegal*(P_L-C_L))- ((totalillegal+ totallegal)*cost)
+      
       Data[t,1]=totalprofit
       Data[t,2]=totallegal
       Data[t+1,3]=totallegal
       Data[t+1,4]=totalillegal
-      Data[t,5]=t-3
-      Data[t,6]=n
-      Data[t,7]=totalillegal
-      Data[t,8]=pi
-      Data[t,9]=pl
-      Data[t,10]=wl
-      Data[t,11]=wi
-      Data[t,12]=totallegal+totalillegal
-     
+      #Data[t,5]=t-3
+      Data[t,6]=T_week
+      #Data[t,7]=totalillegal
+      #Data[t,8]=pi
+      #Data[t,9]=pl
+      #Data[t,10]=wl
+      #Data[t,11]=wi
+      #Data[t,12]=totallegal+totalillegal
+      
     }
     ratios[R,1]=r1
     ratios[R,2]=r2
@@ -364,9 +369,6 @@ for (update in 1:updates) ### Start iterations
 
 end_time <- Sys.time()
 end_time - start_time
-
-
-
 
 #####Histograms of ratios distribution####
 hist(A1)
@@ -415,7 +417,6 @@ fig
 
 
 
-
 #######Compare with data through time####
 ####I am not explaining this in detail cause its just to create the graph, no analysis really
 Data=matrix(0,weeks,14)
@@ -445,10 +446,12 @@ for (R in 1:Rounds) ###Run time simulations
 
     r=erres[t,1]
     enfm=strategic[t,1]
+    T_week=(sample(T_dist,1))
     VisaR=VISA[t,1]
-    D =sample(Detectability,1)*enfm
-    pp =sample(PricePremium,1)
-    n=(sample(AvLand,1))
+    
+    theta = sample(Theta,1)*enfm
+    beta =sample(Beta,1)
+    
     pdl=pdlR*elasticitiesLEGAL[t,1]
     pdi=pdiR*elasticitiesILLEGAL[t,1]
     
@@ -459,18 +462,21 @@ for (R in 1:Rounds) ###Run time simulations
     leg=(1-r)
     
     ####Calculate profit and final 
-    totallegal=leg*n
-    totalillegal=ill*n
+    totallegal=leg*T_week
+    totalillegal=ill*T_week
     
     quotaleft=(quota-totallegal-sum(Data[,3]))
     quotaleftR=if(quotaleft>0){quotaleft} else 0
     visaqf=(visa * (1-((-ve*((quota-quotaleftR)/quota)))))
     
-    wl=   (wbox *  (1-((sel*((qr-n)/qr))))) + if(VisaR>0.5) {visaqf} else  visa            #Here, I add elasticity of demand at the port for legal, based on previos and current catch
-    wi=   (wbox *  (1-((sei*((qr-n)/qr))))) #Here, I add elasticity of demand at the port for illegal, based on previous and current catch
+    C_L=   (c_i *  (1-((sel*((qr-T_week)/qr))))) + if(VisaR>0.5) {visaqf} else  visa            #Here, I add elasticity of demand at the port for legal, based on previos and current catch
+    C_I=   (c_i *  (1-((sei*((qr-T_week)/qr))))) #Here, I add elasticity of demand at the port for illegal, based on previous and current catch
     
-    pi=   (pbox  * (1-((pdi*((qr-n)/qr))))) #same for illegal 
-    pl=   (pbox  * (1-((pdl*((qr-n)/qr))))) + pp
+    P_L=   (p_i  * (1-((pdl*((qr-T_week)/qr))))) + beta
+    P_I=   (p_i  * (1-((pdi*((qr-T_week)/qr))))) #same for illegal 
+    
+    totalprofit=(totalillegal*P_I-C_I)- ((theta* totalillegal)*(4*P_L*totalillegal+fb)) + (totallegal*(P_L-C_L))- ((totalillegal+ totallegal)*cost)
+    
     
     Data[t,1]=totalillegal
     Data[t,2]=totallegal
@@ -486,7 +492,6 @@ for (R in 1:Rounds) ###Run time simulations
 sims=NNAS
 simsI=NNASI
 ###Create data frame with landings data, mean and SD
-####I attached this data
 landingsdata <- read.csv("~/OneDrive - Nexus365/Trade Model Chapter/landingsdata.csv")
 
 ofdata=matrix(0,weeks,18)
@@ -546,5 +551,4 @@ fig <- fig %>% layout(xaxis = list(title = "Week"))
 fig <- fig %>% layout(legend = list(x =0.5, y = 1.1))
 fig <- fig %>% layout(yaxis = list(title = "Ton"))
 fig
-
 
