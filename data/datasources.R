@@ -1,16 +1,24 @@
 ###Code with other sources of data
 ###The idea is that you get a per week mean  for landings, enforcement effort and prices at the port
-
-#####First one is landings#####
-####Packages needed
+###Packages needed for model###
+library(patchwork)
+library(performance)
+library(see)
+library(plotly)
+library(plyr)
+library(DescTools)
+library(dplyr)
+library(lubridate)
+library(broom)
+library(tidyr)
+library(car)
+library(plotly)
 library(zoo)
 library(xts)
-library(lubridate)
-####
-#setwd("~/code/illegal_fishing")
 
+#####First one is landings#####
 ####Load data set. I have it in my mac in this location, but in GitHub is called landings
-dataland <- read.csv("~/OneDrive - Nexus365/Market Framework Chapter/Encuestas Analysis and Background/dataland.csv")
+dataland <- read.csv("~/OneDrive - Nexus365/Chapter 4/Dataland.csv")
 # dataland <- read.csv("data/dataland.csv")
 
 ###Here I define the year as having 50 weeks because that's the number of weeks for a "normal" year" (I exclude september from the analysis cause there is a ban on fishing)
@@ -71,12 +79,10 @@ weekly_landings[1:weeks,9]=weekly_landings[1:weeks,7]-Landings$SD
 plot(weekly_landings[,7])
 
 colnames(weekly_landings) <- c("2019", "2018", "2017", "2016", "2015", "2014", "mean", "mean_p_std", "mean_m_std")
-write.csv(weekly_landings,"data/weekly_landings.csv", row.names = FALSE)
-
 
 ####Enforcement#### Only on VII region, exluding month 9 (september)
 #This is where I store the file. I uploaded this file as Enforcement Data
-Enfeffort <- read.csv("~/OneDrive - Nexus365/Market Framework Chapter/Encuestas Analysis and Background/EnforcementData.csv")
+Enfeffort <- read.csv("~/OneDrive - Nexus365/Chapter 4/EnforcementData.csv")
 # Enfeffort <- read.csv("data/EnforcementData.csv")
 
 ##All this is is filtering and doing the sum calculation
@@ -122,14 +128,27 @@ EnfWeekMean18 <- round(aggregate(Enf2018$count ~ Enf2018$weeks, data = Enf2018, 
 Enf2019=filter(Enfeffort,Enfeffort$Year ==19)
 EnfWeekMean19 <- round(aggregate(Enf2019$count ~ Enf2019$weeks, data = Enf2019, FUN = sum))
 
-###Because I dont know how to put them together (cause they have different lenghts, I will export to excel and combine them there)
 
-write.csv(EnfWeekMean14, "~/OneDrive - Nexus365/Market Framework Chapter/Encuestas Analysis and Background/Enf14.csv")
-write.csv(EnfWeekMean15, "~/OneDrive - Nexus365/Market Framework Chapter/Encuestas Analysis and Background/Enf15.csv")
-write.csv(EnfWeekMean16, "~/OneDrive - Nexus365/Market Framework Chapter/Encuestas Analysis and Background/Enf16.csv")
-write.csv(EnfWeekMean17, "~/OneDrive - Nexus365/Market Framework Chapter/Encuestas Analysis and Background/Enf17.csv")
-write.csv(EnfWeekMean18, "~/OneDrive - Nexus365/Market Framework Chapter/Encuestas Analysis and Background/Enf18.csv")
-write.csv(EnfWeekMean19, "~/OneDrive - Nexus365/Market Framework Chapter/Encuestas Analysis and Background/Enf19.csv")
+####
+#####Prices
+###Precios in all country
+AllPrices <- read.csv("~/OneDrive - Nexus365/Chapter 4/AllPrices.csv")
+AllPrices['dia'] <- 1
+AllPrices = filter(AllPrices,AllPrices$MES !=9)
+format(AllPrices,digits=0)
 
-
+###Merluza
+PreciosMerluza = filter(AllPrices,AllPrices$Nom_Especie =="Merluza común")
+PreciosMerluza$date <- paste(PreciosMerluza$AÑO, PreciosMerluza$MES,PreciosMerluza$dia , sep="-") %>% ymd() %>% as.Date()
+priceseriesMerluza <- data_frame(date=as.Date(PreciosMerluza$date), price=(as.numeric(as.character(PreciosMerluza$PRECIO....ton.))/1000))
+###this is the list of average price per month
+pricesMerluza=priceseriesMerluza %>% group_by(month=floor_date(date, "month")) %>%
+  summarize(price=mean(price))
+###
+PriceMerluza=pricesMerluza$price
+plot(PriceMerluza)
+hist(log(PriceMerluza))
+plot(log(PriceMerluza))
+hist(PriceMerluza)
+shapiro.test(log(PriceMerluza))
 
