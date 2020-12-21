@@ -113,10 +113,10 @@ for (simulation in 1:iterations) ### Start iterations
   visaqf=(visa * (1-((vet*((quota-quotaleftR)/quota)))))
     
   #Calculates prices and costs
-  C_L=   (c_max *  (1-((Elast*((qr-x_T)/qr))))) +   if(vet >0) {visaqf} else  visa            #Here, I add elasticity of demand at the port for legal, based on previos and current catch
-  C_I=   (c_max *  (1-((Elast*((qr-x_T)/qr))))) #Here, I add elasticity of demand at the port for illegal, based on previous and current catch
+  C_L=   (c_max *  (1-((Elast*((qr-x_T)/qr))))) +   if(vet >0) {visaqf} else  visa            #Here, I add elasticity of demand at the port for legal, wrt landings
+  C_I=   (c_max *  (1-((Elast*((qr-x_T)/qr))))) ##Here, I add elasticity of demand at the port for illegal, wrt landings
   
-  P_L=   (p_max  * (1-((Elast*((qr-x_T)/qr))))) + beta
+  P_L=   (p_max  * (1-((Elast*((qr-x_T)/qr))))) + beta #same for price
   P_I=   (p_max  * (1-((Elast*((qr-x_T)/qr))))) #same for illegal 
   
   ###Calculates x_l and x_i (with constraint that x_l cannot be higher than x_T, or lower than 10% of x_T)
