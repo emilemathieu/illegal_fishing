@@ -1,0 +1,235 @@
+####New trade model, with just one step, instead of two
+
+###Packages needed for model####
+library(truncnorm)
+library(ggplot2)
+library(patchwork)
+library(performance)
+library(see)
+library(plotly)
+library(plyr)
+library(DescTools)
+
+#####Pre-model run####
+iterations=10000 ##1O0K takes 6.5 min
+
+####"Data"
+weeks=48 ####Weeks in a normal year excluding September
+quota=(3200000/27) ### 3200 ton quota in 2018. Divided in 27 because "units" are 27 kg boxes
+cost=100 ##Aprox per box
+fb=9.2e+05 ## fine expected per box, from chilean law
+visa=3000  ##Constant value for the year, except in the end
+c_max=15000 ##Max cost per box, then depending on landings and elasticities it goes down
+p_max=30000 ##Max cost per box, then depending on landings and elasticities it goes down
+
+
+####PRIORs for unknown parameters: price premium, detectability, landings, and visa "factor"
+###
+
+####PRIOR range for price premium parameter (value that traders receive for a legal unit)
+beta_min=0   ### price premium lower limit
+beta_mean=1500
+beta_max=3000 ###price premium higher limit, otherwise it goes over visa en then optimal is all legal
+
+####PRIOR range for landings (total units landed each year, considering legal and illegal)
+T_min=(quota/weeks)*3     ## landings lower limit: 3X the legal quota is from one of our papers
+T_max=(27000000/27)/weeks ##landings higher limit: 27,4K ton is from our paper as well
+T_mean=(T_min+T_max)/2
+##Reference quantity for max prices/cost
+qr=min(T_min)
+
+####PRIOR range for detectability (probability of detection per unit)
+theta_min=0
+theta_max= (p_max-c_max-(p_max+beta_mean)+(c_max+visa))/(((T_mean*0.67)*(p_max+beta_mean))+fb) ###This calculates the theta that would result in a x_i/x_T ratio of 0.67...which is the minimum ratio from landings prior
+
+###Prior range for HighEnf (basically, this is a different theta, just for eastern month when there is more enforcement)
+he_min=(p_max-c_max -(p_max+beta_mean)+(c_max+visa))/(((T_mean*1.0)*(p_max+beta_mean))+fb) ###This calculates the theta that would result in a x_i/x_T ratio of 1 (all illegal)
+he_min=0
+he_max=(p_max-c_max- (p_max+beta_mean)+(c_max+visa))/(((T_mean*0.3)*(p_max+beta_mean))+fb) ###This calculates the theta that would result in a x_i/x_T ratio of 0.3...lots of legal
+
+###Prior  range for elasticities, this comes from our paper
+E_mean=0.47
+E_min=0.47-0.23
+E_max=0.47+0.23
+
+###Prior range for LowElast (this prior is for those months when elasticity is lower (prices go up because of more external demand)). I have no data for these ranges
+lelast_min=0
+lelast_max=0.3
+lelast_mean=0.15
+
+###Prior range for VisaEnd (this is a "elasticity" that models how much the visa cost goes down at the end of the year wrt to quota left). I have no data for these ranges
+visaend_min=0.8
+visaend_max=1
+visaend_mean=0.9
+
+
+####This creates the priors based on the ranges above
+beta_P=rtruncnorm(n=iterations,   a=beta_min,  b=beta_max, mean=(beta_mean),  sd=100000)
+theta_P = rtruncnorm(n=iterations, a=theta_min,  b=theta_max, mean=((theta_min+theta_max)/2), sd=1)
+T_I=rtruncnorm(n=iterations,   a=T_min,  b=T_max, mean=((T_mean)),  sd=10000000)
+Elasticities_P=rtruncnorm(n=iterations,   a=E_min,  b=E_max, mean=((E_mean)),  sd=1)
+HighEnf_P=rtruncnorm(n=iterations,   a=he_min,  b=he_max, mean=((he_min+he_max)/2),  sd=100)
+Lowelast_P=rtruncnorm(n=iterations,   a=lelast_min,  b=lelast_max, mean=((lelast_mean)),  sd=100)
+VisaEnd_P=rtruncnorm(n=iterations,   a=visaend_min,  b=visaend_max, mean=((visaend_mean)),  sd=100)
+
+###Track time it takes to run
+start_time <- Sys.time()
+start_time
+
+#####Model#####
+results=matrix(0,iterations,23)
+for (simulation in 1:iterations) ### Start iterations
+{
+  
+  ###Sample each parameter and build the vectors that define which parameters are used in each time step depending on the "stage"
+  beta=sample(beta_P,1)
+  theta=sample(theta_P,1)
+  Elast=-(sample(Elasticities_P,1))
+  he=(sample(HighEnf_P,1))
+  lelast=-(sample(Lowelast_P,1))
+  ve=(sample(VisaEnd_P,1))
+  
+  ####Stage 1 is "normal" use of parameters, Stage 2 is high enforcement and low elasticity, Stage 3 is low elasticity, and Stage 4 is visa cost decreasing wrt quota left
+  
+                                          ##############STAGE 1#################  ##########STAGE 2########  ##############################STAGE 1########################    ##############################STAGE 3########################   ###STAGE 4####
+  strategicENF=       as.data.frame(rep(c( theta,  theta,  theta,  theta,  theta,      he,      he,      he,  theta,   theta,   theta,   theta,   theta,   theta,   theta,    theta,   theta,   theta,   theta,   theta,    theta,   theta,   theta,    theta), each = 2))
+  elasticities=       as.data.frame(rep(c( Elast,  Elast,  Elast,  Elast,  Elast,  lelast,  lelast,  lelast,  Elast,   Elast,   Elast,   Elast,   Elast,   Elast,   Elast,   lelast,  lelast,  lelast,   lelast,  lelast,  lelast,   lelast,   Elast,   Elast), each = 2))
+  visaEND=            as.data.frame(rep(c(     0,      0,      0,      0,      0,       0,       0,       0,      0,       0,       0,       0,       0,       0,       0,        0,       0,       0,        0,       0,       0,        0,      ve,      ve), each = 2))
+  
+  Data=matrix(0,weeks,7)
+  
+  for (t in 1:weeks) ###Run time iterations
+  {
+  
+  #Select parameter based on vector (that depends on time step)
+  Elast=elasticities[t,1]
+  vet=visaEND[t,1]
+  theta=strategicENF[t,1]
+  x_T=sample(T_I,1)
+
+  ###Calculates quota left for en of year and "new" value of visa
+  quotaleft=(quota-sum(Data[,1]))
+  quotaleftR=if(quotaleft>0){quotaleft} else 0
+  visaqf=(visa * (1-((vet*((quota-quotaleftR)/quota)))))
+    
+  #Calculates prices and costs
+  C_L=   (c_max *  (1-((Elast*((qr-x_T)/qr))))) +   if(vet >0) {visaqf} else  visa            #Here, I add elasticity of demand at the port for legal, based on previos and current catch
+  C_I=   (c_max *  (1-((Elast*((qr-x_T)/qr))))) #Here, I add elasticity of demand at the port for illegal, based on previous and current catch
+  
+  P_L=   (p_max  * (1-((Elast*((qr-x_T)/qr))))) + beta
+  P_I=   (p_max  * (1-((Elast*((qr-x_T)/qr))))) #same for illegal 
+  
+  ###Calculates x_l and x_i (with constraint that x_l cannot be higher than x_T, or lower than 10% of x_T)
+  x_l=x_T-((((P_I-C_I-P_L+C_L-(fb*theta))/(8*theta*(P_L))))) ##legal units
+  x_l=if(x_l<=x_T) {x_l} else {x_T}
+  x_l=if(x_l<=x_T*0.1) {x_T*0.1} else {x_l}
+  x_i=x_T-x_l
+  
+  #Calculates profit
+  totalprofit=(x_i*P_I-C_I)- ((theta* x_i)*(4*P_L*x_i+fb)) + (x_l*(P_L-C_L))- ((x_T)*cost)
+  
+  Data[t,1]=x_l
+  Data[t,2]=x_i
+  Data[t,3]=C_L
+  Data[t,4]=C_I
+  Data[t,5]=P_L
+  Data[t,6]=P_I
+  Data[t,7]=totalprofit
+  
+  }
+  
+  ###This calculates how much legal and illegal was purchased in each stage
+  a=sum(Data[1:10,1])
+  b=sum(Data[17:30,1])
+  s1=(a+b)/24
+  Stage1=s1
+  Stage2=mean(Data[11:16,1])
+  Stage3=mean(Data[31:44,1])
+  Stage4=mean(Data[35:48,1])
+  
+  ai=sum(Data[1:10,2])
+  bi=sum(Data[17:30,2])
+  s1i=(ai+bi)/24
+  Stage1i=s1i
+  Stage2i=mean(Data[11:16,2])
+  Stage3i=mean(Data[31:44,2])
+  Stage4i=mean(Data[35:48,2])
+  
+  results[simulation,1]=sum(Data[,1])
+  results[simulation,2]=sum(Data[,2])
+  results[simulation,3]=sum(Data[,1])+sum(Data[,2])
+  results[simulation,4]=beta
+  results[simulation,5]=theta
+  results[simulation,6]=lelast
+  results[simulation,7]=Elast
+  results[simulation,8]=mean((Data[,3]))
+  results[simulation,9]=mean((Data[,4]))
+  results[simulation,10]=mean((Data[,5]))
+  results[simulation,11]=mean((Data[,6]))
+  results[simulation,12]=((sum(Data[,1])-(quota))/(quota))*100
+  results[simulation,13]=sum(Data[,2])/(sum(Data[,1])+sum(Data[,2]))
+  results[simulation,14]=he
+  results[simulation,15]=ve
+  #results[simulation,16]= (((Stage1)-(stage1))/(stage1))*100
+  #results[simulation,17]= (((Stage2)-(stage2))/(stage2))*100
+  #results[simulation,18]= (((Stage3)-(stage3))/(stage3))*100
+  #results[simulation,19]= (((Stage4)-(stage4))/(stage4))*100
+  results[simulation,20]= Stage1i/(Stage1i+Stage1)
+  results[simulation,21]= Stage2i/(Stage2i+Stage2)
+  results[simulation,22]= Stage3i/(Stage3i+Stage3)
+  results[simulation,23]= Stage4i/(Stage4i+Stage4)
+
+}
+
+end_time <- Sys.time()
+end_time - start_time
+
+#####Plots####
+###Filters those simulations that are +- 10% of quota
+cut=10 
+Results=data.frame(results)
+ResultsFilter1=subset(Results,Results$X1>0)
+ResultsFilter2=subset(ResultsFilter1,ResultsFilter1$X2>0)
+DataFinal=subset(ResultsFilter2, ResultsFilter2$X12>-cut & ResultsFilter2$X12<cut)
+
+Legalboxes=DataFinal$X1
+Illegalboxes=DataFinal$X2
+Landingsboxes=DataFinal$X3
+Beta=DataFinal$X4
+Theta=DataFinal$X5
+LowElast=DataFinal$X6
+Elasticity=DataFinal$X7
+CostLegal=DataFinal$X8
+CostIllegal=DataFinal$X9
+PriceLegal=DataFinal$X10
+PriceIllegal=DataFinal$X11
+Percent=DataFinal$X12
+Ratio=DataFinal$X13
+HighEnforcement=DataFinal$X14
+VisaEndofyear=DataFinal$X15
+RatioS1=DataFinal$X20
+RatioS2=DataFinal$X21
+RatioS3=DataFinal$X22
+RatioS4=DataFinal$X23
+
+
+hist(Illegalboxes)
+hist(Legalboxes)
+hist(Landingsboxes)
+hist(Beta)
+hist(Theta)
+hist(HighEnforcement)
+hist(Elasticity)
+hist(LowElast)
+hist(CostLegal)
+hist(CostIllegal)
+hist(PriceLegal)
+hist(PriceIllegal)
+hist(Percent)
+hist(Ratio)
+hist(RatioS1)
+hist(RatioS2)
+hist(RatioS3)
+hist(RatioS4)
+
+
