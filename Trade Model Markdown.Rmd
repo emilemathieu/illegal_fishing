@@ -26,6 +26,7 @@ Load data
 landings_data       <- read.csv('https://raw.githubusercontent.com/emilemathieu/illegal_fishing/master/data/LandingsYear.csv') ##Landings data
 enforcement_data    <- read.csv    ('https://raw.githubusercontent.com/emilemathieu/illegal_fishing/master/data/enfcomnocom.csv')  ## Enforcement data
 ```
+sum(enforcement_data$V2)
 
 Setting variable
 ```{r, cache=FALSE}
@@ -38,11 +39,11 @@ visa =3000          ###  Constant value for the year, except in the end
 c_max=15000         ###  Max cost per box, then depending on landings and elasticities it goes down
 p_max=30000         ###  Max price per box, then depending on landings and elasticities it goes down
 quota_overall=98000 ###  Yearly overall quota for the 2014-2019 period
-
+mean_land=mean(landings_data$mean)*49
 jan=8613               ###  Quota for January period
 feb_june=49000         ###  Quota for February to June period
 july_dec=98000         ###  Quota for July to December period
-
+min_legal=0.15         ###  Minumum legal they have to take each week
 #### Creates a vector of quota available in each week
 quota_available        =c(1:49)
 quota_available[1:4]   =jan
@@ -71,9 +72,9 @@ T_max=(quota_overall/weeks) * (1/(1-MaxIllegalrate))
 qr=(T_min+T_max)/2
 
 ####PRIOR range for Theta (probability of detection per unit for each enforcement action)
-maxthetaperaction=0.1
-theta_max=maxthetaperaction/(qr*2*100)   ##Higher Limit= FIX Rod you lazy motherfucker
-theta_min= theta_max/10                  ###Lower limit= come on
+
+theta_max= 1.00918E-06  /2            
+theta_min= 1.97878E-08  /2             
 
 ###Prior range for cost elasticity, this comes from our paper
 E_minC=0.47-0.23
@@ -84,8 +85,8 @@ E_minP=0.47-0.23
 E_maxP=0.47+0.23
 
 ###End of year visa elasticity
-visaend_min=0.2
-visaend_max=0.4
+visaend_min=0.1
+visaend_max=0.2
 
 ####This creates the priors based on the ranges above
 beta_P   = runif(n=iterations, min = beta_min, max = beta_max)
@@ -103,12 +104,12 @@ start_time <- Sys.time()
 start_time
 
 ##Create matrix for results
-results         = matrix(0,iterations,10)     ### Keeps track of simulation results
+results          = matrix(0,iterations,10)     ### Keeps track of simulation results
 legal_landings   = matrix(0,weeks,iterations)  ### Keeps track of legal landings in each simulation
 illegal_landings = matrix(0,weeks,iterations)  ### Keeps track of illegal landings in each simulation
 visa_value       = matrix(0,weeks,iterations)  ### Keeps track of visa value in each simulation
 Quota_left       = matrix(0,weeks,iterations)  ### Keeps track of quota left in each simulation
-ratio           = matrix(0,weeks,iterations)  ### Keeps track of quota left in each simulation
+ratio            = matrix(0,weeks,iterations)  ### Keeps track of quota left in each simulation
 
 ### Start loop of iterations
 for (simulation in 1:iterations) ### Start iterations
@@ -144,7 +145,7 @@ for (simulation in 1:iterations) ### Start iterations
   
   ###Calculates x_l, x_i and profit with constraint that x_l cannot be higher than x_T, or lower than 10% of x_T and there is no trading if there is no quota left
   x_l        = x_T-((((P_I-C_I-P_L+C_L-(fine*  prob_detection))/(8*  prob_detection*(P_L))))) ##legal units
-  min_bound  = if(quota_left>0) {0.1 * x_T} else 0
+  min_bound  = if(quota_left>0) {min_legal * x_T} else 0
   max_bound  = min(x_T, quota_left) 
   x_l        = if(x_l <= max_bound) {x_l} else {max_bound}
   x_l        = if(x_l <= min_bound) {min_bound} else {x_l}
@@ -206,7 +207,7 @@ mahalanobis_dist[m,2]=m
 }
 
 ##Reject those simulations above the threshold
-p=0.95
+p=0.99
 threshold              = sqrt(qchisq(p=p, df=weeks))    ### Real filter
 threshold              = max(mahalanobis_dist[,1])      ### Use this to see results without any filter
 mahalanobis_dist_filter= subset(mahalanobis_dist,mahalanobis_dist[,1]<threshold) 
@@ -292,6 +293,7 @@ yDetecIN = DDetIn$y
 xDetecIN = DDetIn$x
 p8       = plot(xDetecIN,yDetecIN, type="l",xlab="Legal Boxes",ylab="Probability Density")
 abline     (v=quota_overall, col="purple")
+abline     (v=mean_land, col="purple")
 ```
 
 Graph landings over time and comparison to data
@@ -345,9 +347,9 @@ Landings_Figure <- Landings_Figure %>% add_trace(y = ~landings_plot$V1*boxtoton,
 
 
 ##Illegal sims
-Landings_Figure <- Landings_Figure%>% add_trace(landings_plot, x = ~seq(1:weeks), y = ~landings_plot$V8*boxtoton, type = 'scatter', mode = 'lines',line = list(color = 'transparent'),showlegend = FALSE, name = 'High Landings') 
-Landings_Figure <- Landings_Figure %>% add_trace(y = ~landings_plot$V9*boxtoton, type = 'scatter', mode = 'lines',fill = 'tonexty', fillcolor='rgba(220,20,60,0.2)', line = list(color = 'transparent'),showlegend = FALSE, name = 'Low Landings')
-Landings_Figure <- Landings_Figure %>% add_trace(y = ~landings_plot$V7*boxtoton, type = 'scatter', mode = 'lines',line = list(color='red'),name = 'Illegal Simulation Mean +/-SD') 
+#Landings_Figure <- Landings_Figure%>% add_trace(landings_plot, x = ~seq(1:weeks), y = ~landings_plot$V8*boxtoton, type = 'scatter', mode = 'lines',line = list(color = 'transparent'),showlegend = FALSE, name = 'High Landings') 
+#Landings_Figure <- Landings_Figure %>% add_trace(y = ~landings_plot$V9*boxtoton, type = 'scatter', mode = 'lines',fill = 'tonexty', fillcolor='rgba(220,20,60,0.2)', line = list(color = 'transparent'),showlegend = FALSE, name = 'Low Landings')
+#Landings_Figure <- Landings_Figure %>% add_trace(y = ~landings_plot$V7*boxtoton, type = 'scatter', mode = 'lines',line = list(color='red'),name = 'Illegal Simulation Mean +/-SD') 
 ##Illegal
 
 #Landings_Figure <- Landings_Figure %>% layout(yaxis = list(range = c(0,150)))
