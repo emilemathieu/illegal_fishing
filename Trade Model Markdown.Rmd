@@ -96,9 +96,12 @@ theta_P  = runif(n=iterations, min=theta_min,  max=theta_max)
 T_I      = runif(n=iterations, min=T_min,  max=T_max)
 Visa_elasticity_P  = runif(n=iterations, min=visaend_min,  max=visaend_max)
 Price_elasticity_P = runif(n=iterations, min=E_minP,  max=E_maxP)
+Price_elasticity_P = runif(n=iterations, min=0,  max=1)         ##########################CHANGE THIS?
 Cost_elasticity_P  = runif(n=iterations, min=E_minC,  max=E_maxC)
 min_legal_P        = runif(n=iterations, min=minlegal_min,  max=minlegal_max)
+
 ```
+
 
 Run simulation model
 ```{r, cache=FALSE}
@@ -153,8 +156,7 @@ for (simulation in 1:iterations) ### Start iterations
   max_bound  = min(x_T, quota_left) 
   x_l        = if(x_l <= max_bound) {x_l} else {max_bound}
   x_l        = if(x_l <= min_bound) {min_bound} else {x_l}
-  #x_i        = if(quota_left>0) {x_T-x_l} else 0   
-  x_i= x_T-x_l
+  x_i        = if(quota_left>0) {x_T-x_l} else 0   
   totalprofit= (x_i*P_I-C_I)- ((prob_detection* x_i)*(4*P_L*x_i+fine)) + (x_l*(P_L-C_L))- ((x_T)*cost)
   
   weekly_simulation[t,1] = x_l
@@ -255,10 +257,14 @@ Parameter Posterior Graphs
 ```{r, cache=FALSE}
 ####Theta
 old.par <- par(mfrow=c(2, 3))
-DDetIn   = density(Theta*mean(Illegalboxes/49)*100, n=iterations, adjust=3) 
+DDetIn   = density(Theta*mean(Illegalboxes/49)*100, n=iterations, adjust=3,from=theta_min*mean(Illegalboxes/49)*100, to=theta_max*mean(Illegalboxes/49)*100) 
 yDetecIN = DDetIn$y
 xDetecIN = DDetIn$x
-p1       = plot(xDetecIN,yDetecIN, type="l",xlab="Theta:% boxes detected by action",ylab="Probability Density")
+Prior    = density(theta_P*mean(Illegalboxes/49)*100, n=iterations, adjust=3,from=theta_min*mean(Illegalboxes/49)*100, to=theta_max*mean(Illegalboxes/49)*100) 
+Priory   = Prior$y
+Priorx   = Prior$x
+plot(xDetecIN,yDetecIN, type="l",xlab="Theta:% boxes detected by action",ylab="Probability Density", col="blue")
+lines(Priorx,Priory)
 
 ###Units confiscated
 #DDetIn   = density(Confiscated, n=iterations, adjust=3)
@@ -271,40 +277,64 @@ p1       = plot(xDetecIN,yDetecIN, type="l",xlab="Theta:% boxes detected by acti
 DDetIn   = density(Beta, n=iterations, adjust=3, from=beta_min, to=beta_max)#
 yDetecIN = DDetIn$y
 xDetecIN = DDetIn$x
-p2       = plot(xDetecIN,yDetecIN, type="l",xlab="Beta (price premium)",ylab="Probability Density")
+Prior    = density(beta_P, n=iterations, adjust=3, from=beta_min, to=beta_max) 
+Priory   = Prior$y
+Priorx   = Prior$x
+plot(xDetecIN,yDetecIN, type="l",xlab="Beta (price premium)",ylab="Probability Density", col="blue")
+lines(Priorx,Priory)
 
 ###Min Legal
 DDetIn   = density(Minlegal, n=iterations, adjust=3, from=minlegal_min, to=minlegal_max)#
 yDetecIN = DDetIn$y
 xDetecIN = DDetIn$x
-p2       = plot(xDetecIN,yDetecIN, type="l",xlab="Minimum Legal Fraction per week",ylab="Probability Density")
+Prior    = density(min_legal_P, n=iterations, adjust=3, from=minlegal_min, to=minlegal_max) 
+Priory   = Prior$y
+Priorx   = Prior$x
+plot(xDetecIN,yDetecIN, type="l",xlab="Minimum Legal Fraction per week",ylab="Probability Density", col="blue")
+lines(Priorx,Priory)
 
 
 ###Price Elasticity 
-DDetIn   = density(-ElasticityPrice, n=iterations, adjust=3, from=E_minP, to=E_maxP)
+DDetIn   = density(-ElasticityPrice, n=iterations, adjust=3, from=0, to=1)#from=E_minP, to=E_maxP)
 yDetecIN = DDetIn$y
 xDetecIN = DDetIn$x
-p3       = plot(xDetecIN,yDetecIN, type="l",xlab="Price Elasticity",ylab="Probability Density")
+Prior    = density(Price_elasticity_P, n=iterations, adjust=3, from=0, to=1)#from=E_minP, to=E_maxP) 
+Priory   = Prior$y
+Priorx   = Prior$x
+plot(xDetecIN,yDetecIN, type="l",xlab="Price Elasticity",ylab="Probability Density", col="blue")
+lines(Priorx,Priory)
+
 
 ###Elasticity Cost
-DDetIn   = density(-ElasticityCost, n=iterations, adjust=3, from=E_minC, to=E_maxC)
+DDetIn   = density(-ElasticityCost, n=iterations, adjust=3,from=0, to=1) #from=E_minC, to=E_maxC
 yDetecIN = DDetIn$y
 xDetecIN = DDetIn$x
-p4       = plot(xDetecIN,yDetecIN, type="l",xlab="Cost Elasticity",ylab="Probability Density")
+Prior    = density(Cost_elasticity_P, n=iterations, adjust=3, from=0, to=1) #from=E_minC, to=E_maxC) 
+Priory   = Prior$y
+Priorx   = Prior$x
+plot(xDetecIN,yDetecIN, type="l",xlab="Cost Elasticity",ylab="Probability Density", col="blue")
+lines(Priorx,Priory)
 
 ##Visa Elasticity
 DDetIn   = density(VisaEndofyear, n=iterations, adjust=3,  from=visaend_min, to=visaend_max)
 yDetecIN = DDetIn$y
 xDetecIN = DDetIn$x
-p5       = plot(xDetecIN,yDetecIN, type="l",xlab="Visa end of year Elasticity",ylab="Probability Density")
-
+Prior    = density(Visa_elasticity_P, n=iterations, adjust=3,  from=visaend_min, to=visaend_max) 
+Priory   = Prior$y
+Priorx   = Prior$x
+plot(xDetecIN,yDetecIN, type="l",xlab="Visa Elasticity",ylab="Probability Density", col="blue")
+lines(Priorx,Priory)
 
 ##Total landings
 old.par <- par(mfrow=c(2, 2))
 DDetIn   = density(Landingsboxes, n=iterations, adjust=3)
 yDetecIN = DDetIn$y
 xDetecIN = DDetIn$x
-p6       = plot(xDetecIN,yDetecIN, type="l",xlab="Total Landings in boxes",ylab="Probability Density")
+Prior    = density(T_I*weeks, n=iterations, adjust=3) 
+Priory   = Prior$y
+Priorx   = Prior$x
+plot(xDetecIN,yDetecIN, type="l",xlab="Total Landings",ylab="Probability Density", col="blue")
+lines(Priorx,Priory)
 
 ##Ratio
 DDetIn   = density(Ratio, n=iterations, adjust=3)
@@ -471,7 +501,7 @@ quota_plot
 Build Baseline Posteriors to be used in comparison code (not here)
 ```{r, cache=FALSE}
 lenght                = length(Theta)
-BaseLinePosterios     = matrix(0,lenght,9)
+BaseLinePosterios     = matrix(0,lenght,10)
 BaseLinePosterios[,1] = Theta
 BaseLinePosterios[,2] = Beta
 BaseLinePosterios[,3] = Landingsboxes
@@ -481,6 +511,7 @@ BaseLinePosterios[,6] = VisaEndofyear
 BaseLinePosterios[,7] = Illegalboxes
 BaseLinePosterios[,8] = Ratio
 BaseLinePosterios[,9] = Legalboxes
+BaseLinePosterios[,10]= Minlegal
 write.csv(BaseLinePosterios,'~/OneDrive - Nexus365/Chapter 4/BaseLinePosterior.csv')
 ```
 
