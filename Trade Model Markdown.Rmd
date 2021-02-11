@@ -24,9 +24,8 @@ library(DescTools)
 Load data
 ```{r, cache=FALSE}
 landings_data       <- read.csv('https://raw.githubusercontent.com/emilemathieu/illegal_fishing/master/data/LandingsYear.csv') ##Landings data
-enforcement_data    <- read.csv    ('https://raw.githubusercontent.com/emilemathieu/illegal_fishing/master/data/enfcomnocom.csv')  ## Enforcement data
+enforcement_data    <- read.csv('https://raw.githubusercontent.com/emilemathieu/illegal_fishing/master/data/enfcomnocom.csv')  ## Enforcement data
 ```
-sum(enforcement_data$V2)
 
 Setting variable
 ```{r, cache=FALSE}
@@ -43,7 +42,6 @@ mean_land=mean(landings_data$mean)*49
 jan=8613               ###  Quota for January period
 feb_june=49000         ###  Quota for February to June period
 july_dec=98000         ###  Quota for July to December period
-min_legal=0.15         ###  Minumum legal they have to take each week
 #### Creates a vector of quota available in each week
 quota_available        =c(1:49)
 quota_available[1:4]   =jan
@@ -73,8 +71,8 @@ qr=(T_min+T_max)/2
 
 ####PRIOR range for Theta (probability of detection per unit for each enforcement action)
 
-theta_max= 1.00918E-06  /2            
-theta_min= 1.97878E-08  /2             
+theta_max= 2.83e-7        
+theta_min= 2.83e-8           
 
 ###Prior range for cost elasticity, this comes from our paper
 E_minC=0.47-0.23
@@ -88,6 +86,10 @@ E_maxP=0.47+0.23
 visaend_min=0.1
 visaend_max=0.2
 
+###Minimum legal per week
+minlegal_min=0.1
+minlegal_max=0.2
+
 ####This creates the priors based on the ranges above
 beta_P   = runif(n=iterations, min = beta_min, max = beta_max)
 theta_P  = runif(n=iterations, min=theta_min,  max=theta_max)
@@ -95,6 +97,7 @@ T_I      = runif(n=iterations, min=T_min,  max=T_max)
 Visa_elasticity_P  = runif(n=iterations, min=visaend_min,  max=visaend_max)
 Price_elasticity_P = runif(n=iterations, min=E_minP,  max=E_maxP)
 Cost_elasticity_P  = runif(n=iterations, min=E_minC,  max=E_maxC)
+min_legal_P        = runif(n=iterations, min=minlegal_min,  max=minlegal_max)
 ```
 
 Run simulation model
@@ -104,7 +107,7 @@ start_time <- Sys.time()
 start_time
 
 ##Create matrix for results
-results          = matrix(0,iterations,10)     ### Keeps track of simulation results
+results          = matrix(0,iterations,12)     ### Keeps track of simulation results
 legal_landings   = matrix(0,weeks,iterations)  ### Keeps track of legal landings in each simulation
 illegal_landings = matrix(0,weeks,iterations)  ### Keeps track of illegal landings in each simulation
 visa_value       = matrix(0,weeks,iterations)  ### Keeps track of visa value in each simulation
@@ -121,6 +124,7 @@ for (simulation in 1:iterations) ### Start iterations
   price_elasticity = -(sample(Price_elasticity_P,1))
   cost_elasticity  = -(sample(Cost_elasticity_P,1))
   visa_elasticity  = (sample(Visa_elasticity_P,1))
+  min_legal        = (sample(min_legal_P,1))
 
   ##Start loop of weekly simulations
   weekly_simulation  =  matrix(0,weeks,10)
@@ -149,7 +153,8 @@ for (simulation in 1:iterations) ### Start iterations
   max_bound  = min(x_T, quota_left) 
   x_l        = if(x_l <= max_bound) {x_l} else {max_bound}
   x_l        = if(x_l <= min_bound) {min_bound} else {x_l}
-  x_i        = if(quota_left>0) {x_T-x_l} else 0   
+  #x_i        = if(quota_left>0) {x_T-x_l} else 0   
+  x_i= x_T-x_l
   totalprofit= (x_i*P_I-C_I)- ((prob_detection* x_i)*(4*P_L*x_i+fine)) + (x_l*(P_L-C_L))- ((x_T)*cost)
   
   weekly_simulation[t,1] = x_l
@@ -182,8 +187,11 @@ for (simulation in 1:iterations) ### Start iterations
   results[simulation,8] = visa_elasticity
   results[simulation,9] = sum(weekly_simulation[,2])/(sum(weekly_simulation[,1])+sum(weekly_simulation[,2]))  ## Ratio
   results[simulation,10]= simulation
+  results[simulation,11]= theta*results[simulation,9]*  (results[simulation,3])^2*sum(enforcement)
+  results[simulation,12]= min_legal
 
 }
+
 
 end_time <- Sys.time()
 end_time - start_time
@@ -209,7 +217,7 @@ mahalanobis_dist[m,2]=m
 ##Reject those simulations above the threshold
 p=0.99
 threshold              = sqrt(qchisq(p=p, df=weeks))    ### Real filter
-threshold              = max(mahalanobis_dist[,1])      ### Use this to see results without any filter
+#threshold              = max(mahalanobis_dist[,1])      ### Use this to see results without any filter
 mahalanobis_dist_filter= subset(mahalanobis_dist,mahalanobis_dist[,1]<threshold) 
 
 ## Plot distances and threshold (line)
@@ -239,6 +247,8 @@ ElasticityPrice= SimResults$X6
 ElasticityCost = SimResults$X7
 VisaEndofyear  = SimResults$X8
 Ratio          = SimResults$X9
+Confiscated    = SimResults$X11
+Minlegal       = SimResults$X12
 ```
 
 Parameter Posterior Graphs 
@@ -250,11 +260,25 @@ yDetecIN = DDetIn$y
 xDetecIN = DDetIn$x
 p1       = plot(xDetecIN,yDetecIN, type="l",xlab="Theta:% boxes detected by action",ylab="Probability Density")
 
+###Units confiscated
+#DDetIn   = density(Confiscated, n=iterations, adjust=3)
+#yDetecIN = DDetIn$y
+#xDetecIN = DDetIn$x
+#p5       = plot(xDetecIN,yDetecIN, type="l",xlab="Units Confiscated",ylab="Probability Density")
+#abline     (v=1700, col="purple")
+
 ###Beta
 DDetIn   = density(Beta, n=iterations, adjust=3, from=beta_min, to=beta_max)#
 yDetecIN = DDetIn$y
 xDetecIN = DDetIn$x
 p2       = plot(xDetecIN,yDetecIN, type="l",xlab="Beta (price premium)",ylab="Probability Density")
+
+###Min Legal
+DDetIn   = density(Minlegal, n=iterations, adjust=3, from=minlegal_min, to=minlegal_max)#
+yDetecIN = DDetIn$y
+xDetecIN = DDetIn$x
+p2       = plot(xDetecIN,yDetecIN, type="l",xlab="Minimum Legal Fraction per week",ylab="Probability Density")
+
 
 ###Price Elasticity 
 DDetIn   = density(-ElasticityPrice, n=iterations, adjust=3, from=E_minP, to=E_maxP)
@@ -274,14 +298,15 @@ yDetecIN = DDetIn$y
 xDetecIN = DDetIn$x
 p5       = plot(xDetecIN,yDetecIN, type="l",xlab="Visa end of year Elasticity",ylab="Probability Density")
 
+
 ##Total landings
+old.par <- par(mfrow=c(2, 2))
 DDetIn   = density(Landingsboxes, n=iterations, adjust=3)
 yDetecIN = DDetIn$y
 xDetecIN = DDetIn$x
 p6       = plot(xDetecIN,yDetecIN, type="l",xlab="Total Landings in boxes",ylab="Probability Density")
 
 ##Ratio
-old.par <- par(mfrow=c(1, 2))
 DDetIn   = density(Ratio, n=iterations, adjust=3)
 yDetecIN = DDetIn$y
 xDetecIN = DDetIn$x
@@ -352,7 +377,7 @@ Landings_Figure <- Landings_Figure %>% add_trace(y = ~landings_plot$V1*boxtoton,
 #Landings_Figure <- Landings_Figure %>% add_trace(y = ~landings_plot$V7*boxtoton, type = 'scatter', mode = 'lines',line = list(color='red'),name = 'Illegal Simulation Mean +/-SD') 
 ##Illegal
 
-#Landings_Figure <- Landings_Figure %>% layout(yaxis = list(range = c(0,150)))
+Landings_Figure <- Landings_Figure %>% layout(yaxis = list(range = c(0,150)))
 Landings_Figure <- Landings_Figure %>% layout(showlegend = TRUE)
 Landings_Figure <- Landings_Figure %>% layout(xaxis = list(title = "Week"))
 Landings_Figure <- Landings_Figure %>% layout(legend = list(x =0.5, y = 1.1))
@@ -445,7 +470,7 @@ quota_plot
 
 Build Baseline Posteriors to be used in comparison code (not here)
 ```{r, cache=FALSE}
-lenght                = length(SimResults$X15)
+lenght                = length(Theta)
 BaseLinePosterios     = matrix(0,lenght,9)
 BaseLinePosterios[,1] = Theta
 BaseLinePosterios[,2] = Beta
