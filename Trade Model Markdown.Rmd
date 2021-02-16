@@ -62,7 +62,7 @@ beta_max=3000 ###price premium higher limit
 ####PRIOR range for landings (total units landed each year, considering legal and illegal)
 ###First define overall range of landings and how much are illegal landings ratio 
 MaxIllegalrate=0.85    #85% Illegal, higher limit
-MinIllegalrate=0.10    #10% Illegal, lower limit
+MinIllegalrate=0.0    #10% Illegal, lower limit
 
 ###Then calculate Prior range
 T_min=(quota_overall/weeks) * (1/(1-MinIllegalrate)) 
@@ -71,8 +71,8 @@ qr=(T_min+T_max)/2
 
 ####PRIOR range for Theta (probability of detection per unit for each enforcement action)
 
-theta_max= 2.83e-7        
-theta_min= 2.83e-8           
+theta_max= 2.0e-7        
+theta_min= 2.0e-8           
 
 ###Prior range for cost elasticity, this comes from our paper
 E_minC=0.47-0.23
@@ -333,7 +333,7 @@ xDetecIN = DDetIn$x
 Prior    = density(T_I*weeks, n=iterations, adjust=3) 
 Priory   = Prior$y
 Priorx   = Prior$x
-plot(xDetecIN,yDetecIN, type="l",xlab="Total Landings",ylab="Probability Density", col="blue")
+plot(xDetecIN,yDetecIN, type="l",xlab="Total Landings",ylab="Probability Density", col="blue", xlim=c(T_min*weeks,T_max*weeks))
 lines(Priorx,Priory)
 
 ##Ratio
