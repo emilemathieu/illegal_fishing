@@ -30,7 +30,7 @@ enforcement_data    <- read.csv('https://raw.githubusercontent.com/emilemathieu/
 Setting variable
 ```{r, cache=FALSE}
 
-iterations=10000    ###  Number of times the model is ran: 1M takes 27 min, 100K takes 3 min, 10K takes 15 sec,
+iterations=100000    ###  Number of times the model is ran: 1M takes 27 min, 100K takes 3 min, 10K takes 15 sec,
 weeks=49            ###  Weeks in a normal year excluding September
 cost =500           ###  Aprox per box but doesn't really matter
 fine =9.2e+05       ###  Fine expected per box, from chilean law
@@ -70,7 +70,6 @@ T_max=(quota_overall/weeks) * (1/(1-MaxIllegalrate))
 qr=(T_min+T_max)/2
 
 ####PRIOR range for Theta (probability of detection per unit for each enforcement action)
-
 theta_max= 2.0e-7        
 theta_min= 2.0e-8           
 
@@ -79,8 +78,8 @@ E_minC=0.47-0.23
 E_maxC=0.47+0.23
 
 ###Prior range for price elasticity, I assume these are the same than for cost
-E_minP=0.47-0.23
-E_maxP=0.47+0.23
+E_minP=0
+E_maxP=1
 
 ###End of year visa elasticity
 visaend_min=0.1
@@ -101,7 +100,6 @@ Cost_elasticity_P  = runif(n=iterations, min=E_minC,  max=E_maxC)
 min_legal_P        = runif(n=iterations, min=minlegal_min,  max=minlegal_max)
 
 ```
-
 
 Run simulation model
 ```{r, cache=FALSE}
@@ -227,7 +225,7 @@ hist       (mahalanobis_dist[,1])
 abline     (v=threshold, col="purple")
 
 Accepted=(length(mahalanobis_dist_filter[,1])/length(mahalanobis_dist[,1]))  ## Proportion of accepted simulations
-Accepted
+Accepted*100
 
 ## Select those simulations that were accepted
 Accepted_Legs  = legal_landings[,c(mahalanobis_dist_filter[,2])]   ##Select those legal vectors that passed the filter
@@ -256,6 +254,7 @@ Minlegal       = SimResults$X12
 Parameter Posterior Graphs 
 ```{r, cache=FALSE}
 ####Theta
+options(scipen=999)
 old.par <- par(mfrow=c(2, 3))
 DDetIn   = density(Theta*mean(Illegalboxes/49)*100, n=iterations, adjust=3,from=theta_min*mean(Illegalboxes/49)*100, to=theta_max*mean(Illegalboxes/49)*100) 
 yDetecIN = DDetIn$y
@@ -305,11 +304,11 @@ plot(xDetecIN,yDetecIN, type="l",xlab="Price Elasticity",ylab="Probability Densi
 lines(Priorx,Priory)
 
 
-###Elasticity Cost
-DDetIn   = density(-ElasticityCost, n=iterations, adjust=3,from=0, to=1) #from=E_minC, to=E_maxC
+###Cost Elasticity 
+DDetIn   = density(-ElasticityCost,   n=iterations, adjust=3, from=E_minC, to=E_maxC) #from=E_minC, to=E_maxC
 yDetecIN = DDetIn$y
 xDetecIN = DDetIn$x
-Prior    = density(Cost_elasticity_P, n=iterations, adjust=3, from=0, to=1) #from=E_minC, to=E_maxC) 
+Prior    = density(Cost_elasticity_P, n=iterations, adjust=3, from=E_minC, to=E_maxC)  #from=E_minC, to=E_maxC) 
 Priory   = Prior$y
 Priorx   = Prior$x
 plot(xDetecIN,yDetecIN, type="l",xlab="Cost Elasticity",ylab="Probability Density", col="blue")
@@ -342,12 +341,19 @@ yDetecIN = DDetIn$y
 xDetecIN = DDetIn$x
 p7       = plot(xDetecIN,yDetecIN, type="l",xlab="Ratio",ylab="Probability Density")
 
+##Illegalboxes
+DDetIn=density(Illegalboxes, n=iterations, adjust=4)
+SimY=DDetIn$y
+SimX=DDetIn$x
+plot(SimX,SimY, type="l",xlab="Illegal Boxes",ylab="Probability Density", xlim=c(0,500000))
+
+
 ## Legal Boxes 
 DDetIn   = density(Legalboxes, n=iterations, adjust=3)
 yDetecIN = DDetIn$y
 xDetecIN = DDetIn$x
 p8       = plot(xDetecIN,yDetecIN, type="l",xlab="Legal Boxes",ylab="Probability Density")
-abline     (v=quota_overall, col="purple")
+
 abline     (v=mean_land, col="purple")
 ```
 
@@ -407,7 +413,7 @@ Landings_Figure <- Landings_Figure %>% add_trace(y = ~landings_plot$V1*boxtoton,
 #Landings_Figure <- Landings_Figure %>% add_trace(y = ~landings_plot$V7*boxtoton, type = 'scatter', mode = 'lines',line = list(color='red'),name = 'Illegal Simulation Mean +/-SD') 
 ##Illegal
 
-Landings_Figure <- Landings_Figure %>% layout(yaxis = list(range = c(0,150)))
+Landings_Figure <- Landings_Figure %>% layout(yaxis = list(range = c(0,200)))
 Landings_Figure <- Landings_Figure %>% layout(showlegend = TRUE)
 Landings_Figure <- Landings_Figure %>% layout(xaxis = list(title = "Week"))
 Landings_Figure <- Landings_Figure %>% layout(legend = list(x =0.5, y = 1.1))
