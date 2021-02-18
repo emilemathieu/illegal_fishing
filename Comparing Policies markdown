@@ -2,20 +2,30 @@
 title: "Comparing Policies"
 output: html_document
 ---
-
+Load required packages
+```{r, cache=FALSE}
+library(ggplot2)
+library(patchwork)
+library(performance)
+library(see)
+library(plotly)
+library(plyr)
+library(DescTools)
+library(transport)
+```
 
 Select "policies"
 ```{r cache=FALSE}
 ####If in useX you put 1, it will use Baseline posterior (no policy change), 2 is multiply and 3 is fixed value         
-quota_increase=1.2 ###1.2 for instance reflects a 20% increase
+quota_increase=1 ###1.2 for instance reflects a 20% increase
 
-useBeta=1 
-BetaFixValue= 3000
+useBeta=3 
+BetaFixValue= 2500
 betamult=1
                  
-useTheta=2
+useTheta=1
 ThetaFixValue= 3.0e-7 
-thetamult=5
+thetamult=1.5
                  
 useElastP=1
 elastPFixValue= -0.5   
@@ -23,14 +33,14 @@ elastPmult=5
                  
 useElastC=1   
 elastCFixValue= -0.5  
-elastCmult=5
+elastCmult=10
 
 useVisa=1 
 VisaFixValue= 0.3   
 visamult=5
 
 useMin=1 
-MinFixValue= 0.2   
+MinFixValue= 0.3   
 minmult=2
                  
 ``` 
@@ -39,10 +49,11 @@ Data
 ```{r, cache=FALSE}
 landings_data       <- read.csv('https://raw.githubusercontent.com/emilemathieu/illegal_fishing/master/data/LandingsYear.csv') ##Landings data
 enforcement_data    <- read.csv    ('https://raw.githubusercontent.com/emilemathieu/illegal_fishing/master/data/enfcomnocom.csv')  ## Enforcement data
-BaseLinePosterios=read.csv('~/OneDrive - Nexus365/Chapter 4/BaseLinePosterior.csv')
+BaseLinePosterios   <- read.csv('~/OneDrive - Nexus365/Chapter 4/BaseLinePosterior.csv')
 
 ####"Data"
-iterations=10000    ###  Number of times the model is ran: 1M takes 27 min, 100K takes 3 min, 10K takes 15 sec,
+iterations=length(BaseLinePosterios$V1)   ###  Number of times the model is ran: 1M takes 27 min, 100K takes 3 min, 10K takes 15 sec,
+iterations=5000
 weeks=49            ###  Weeks in a normal year excluding September
 cost =500           ###  Aprox per box but doesn't really matter
 fine =9.2e+05       ###  Fine expected per box, from chilean law
@@ -51,21 +62,19 @@ c_max=15000         ###  Max cost per box, then depending on landings and elasti
 p_max=30000         ###  Max price per box, then depending on landings and elasticities it goes down
 quota_overall=98000 * quota_increase ###  Yearly overall quota for the 2014-2019 period
 mean_land=mean(landings_data$mean)*49
-jan=8613          * quota_increase          ###  Quota for January period
+jan     =8613     * quota_increase          ###  Quota for January period
 feb_june=49000    * quota_increase     ###  Quota for February to June period
 july_dec=98000    * quota_increase     ###  Quota for July to December period
-min_legal=0.15    * quota_increase     ###  Minumum legal they have to take each week
+
 #### Creates a vector of quota available in each week
 quota_available        =c(1:49)
 quota_available[1:4]   =jan
 quota_available[5:25]  =feb_june
 quota_available[26:49] =july_dec
 
- quotaADD=1
-
- enforcement=as.data.frame((enforcement_data[,3]))  
+enforcement=as.data.frame((enforcement_data[,3]))  
  
-T_min= 2222 #10 and 85
+T_min= 2000 #0 and 85
 T_max=13333
 qr=(T_min+T_max)/2
  
@@ -97,11 +106,9 @@ visa_value       = matrix(0,weeks,iterations)  ### Keeps track of visa value in 
 Quota_left       = matrix(0,weeks,iterations)  ### Keeps track of quota left in each simulation
 ratio            = matrix(0,weeks,iterations)  ### Keeps track of quota left in each simulation
 
-
 for (simulation in 1:iterations) ### Start iterations
 {
   ###Sample each parameter 
-
   beta=if(useBeta<3) {sample(beta_P,1)} else (BetaFixValue)
   theta=if(useTheta<3) {sample(theta_P,1)} else (ThetaFixValue)
   price_elasticity=if(useElastP<3) {sample(Elasticities_PP,1)} else (elastPFixValue)
@@ -109,35 +116,35 @@ for (simulation in 1:iterations) ### Start iterations
   visa_elasticity=if(useVisa<3) {sample(VisaEnd_P,1)} else (VisaFixValue)
   min_legal=if(useMin<3) {sample(min_legal_P,1)} else (MinFixValue)
   
-   Data=matrix(0,weeks,12)
+  Data=matrix(0,weeks,12)
   
-  weekly_simulation  =  matrix(0,weeks,12)
+  weekly_simulation  =  matrix(0,weeks,10)
   for (t in 1:weeks) ###Run time iterations (a year within each simulation)
   {
     prob_detection = theta*enforcement[t,1] # use the enforcement data per week
     x_T            = sample(T_I,1)          # Sample landings for that week
     
-    ###Calculates quota left for end of year and "new" value of visa
-    quota       = quota_available[t]
-    quota_left  = (quota-sum(weekly_simulation[,1]))
-    rate_r      = quota_overall/(weeks+1)
-    rate        = quota_left/(weeks-t+1)
-    visa_t      = max(0, visa * (1 - visa_elasticity * (max(0, rate - rate_r) / rate_r))) 
-    
-    #Calculates prices and costs
-    C_L=   (c_max *  (1-((cost_elasticity*((qr-x_T)/qr)))))  + visa_t      #Elasticity of cost for legal boxes, wrt landings + visa
-    C_I=   (c_max *  (1-((cost_elasticity*((qr-x_T)/qr)))))                 #Elasticity of cost  for illegal boxes, wrt landings
-    P_L=   (p_max  * (1-((price_elasticity*((qr-x_T)/qr))))) + beta         #Elasticity of price legal boxes, wrt landings + beta
-    P_I=   (p_max  * (1-((price_elasticity*((qr-x_T)/qr)))))                #Elasticity of price illegal boxes, wrt landings
-    
-    ###Calculates x_l, x_i and profit with constraint that x_l cannot be higher than x_T, or lower than 10% of x_T and there is no trading if there is no quota left
-    x_l        = x_T-((((P_I-C_I-P_L+C_L-(fine*  prob_detection))/(8*  prob_detection*(P_L))))) ##legal units
-    min_bound  = if(quota_left>0) {min_legal * x_T} else 0
-    max_bound  = min(x_T, quota_left) 
-    x_l        = if(x_l <= max_bound) {x_l} else {max_bound}
-    x_l        = if(x_l <= min_bound) {min_bound} else {x_l}
-    x_i        = if(quota_left>0) {x_T-x_l} else 0   
-    totalprofit= (x_i*P_I-C_I)- ((prob_detection* x_i)*(4*P_L*x_i+fine)) + (x_l*(P_L-C_L))- ((x_T)*cost)
+  ###Calculates quota left for end of year and "new" value of visa
+  quota       = quota_available[t]
+  quota_left  = (quota-sum(weekly_simulation[,1]))
+  rate_r      = quota_overall/(weeks+1)
+  rate        = quota_left/(weeks-t+1)
+  visa_t      = max(0, visa * (1 - visa_elasticity * (max(0, rate - rate_r) / rate_r))) 
+  
+  #Calculates prices and costs
+  C_L=   (c_max *  (1-((cost_elasticity*((qr-x_T)/qr)))))  + visa_t      #Elasticity of cost for legal boxes, wrt landings + visa
+  C_I=   (c_max *  (1-((cost_elasticity*((qr-x_T)/qr)))))                 #Elasticity of cost  for illegal boxes, wrt landings
+  P_L=   (p_max  * (1-((price_elasticity*((qr-x_T)/qr))))) + beta         #Elasticity of price legal boxes, wrt landings + beta
+  P_I=   (p_max  * (1-((price_elasticity*((qr-x_T)/qr)))))                #Elasticity of price illegal boxes, wrt landings
+  
+  ###Calculates x_l, x_i and profit with constraint that x_l cannot be higher than x_T, or lower than 10% of x_T and there is no trading if there is no quota left
+  x_l        = x_T-((((P_I-C_I-P_L+C_L-(fine*  prob_detection))/(8*  prob_detection*(P_L))))) ##legal units
+  min_bound  = if(quota_left>0) {min_legal * x_T} else 0
+  max_bound  = min(x_T, quota_left) 
+  x_l        = if(x_l <= max_bound) {x_l} else {max_bound}
+  x_l        = if(x_l <= min_bound) {min_bound} else {x_l}
+  x_i        = if(quota_left>0) {x_T-x_l} else 0   
+  totalprofit= (x_i*P_I-C_I)- ((prob_detection* x_i)*(4*P_L*x_i+fine)) + (x_l*(P_L-C_L))- ((x_T)*cost)
     
     weekly_simulation[t,1] = x_l
     weekly_simulation[t,2] = x_i
@@ -178,8 +185,8 @@ end_time - start_time
 
 Plot new posterior and results
 ```{r, cache=FALSE}
+options(scipen=999)
 SimResults=data.frame(results)
-write.csv(SimResults,'~/OneDrive - Nexus365/Chapter 4/SimResults.csv')
 
 ##This selects the simulations that were used (to obtain weekly values)
 PassedLegs=legal_landings
@@ -198,15 +205,15 @@ Minlegal       = SimResults$X12
 
 
 old.par <- par(mfrow=c(2, 3))
-DDetIn=density(Theta*(mean(Illegalboxes)/weeks)*100, n=iterations, adjust=4) #
+DDetIn=density(Theta*(mean(BaseLinePosterios$V7)), n=iterations, adjust=4) #
 yDetecIN=DDetIn$y
 xDetecIN=DDetIn$x
 #p1=plot(xDetecIN,yDetecIN, type="l",xlab="Theta:% boxes detected by action",ylab="Probability Density")
 #hist(Theta*(mean(Illegalboxes)/weeks)*100)
-DetIn=density(BaseLinePosterios$V1*(mean(Illegalboxes)/weeks)*100, n=iterations, adjust=4)
+DetIn=density(BaseLinePosterios$V1*(mean(BaseLinePosterios$V7)), n=iterations, adjust=4)
 BaseY=DetIn$y
 BaseX=DetIn$x
-plot(BaseX,BaseY, type="l",xlab="Theta",ylab="Probability Density", col="blue")
+plot(BaseX,BaseY, type="l",xlab="Theta",ylab="Probability Density", col="blue", xlim=c(0,0.15))
 lines(xDetecIN,yDetecIN)
 
 
@@ -256,11 +263,11 @@ plot(BaseX,BaseY, type="l",xlab="Elasticity Cost",ylab="Probability Density", co
 lines(xDetecIN,yDetecIN)
 
 
-DDetIn=density(VisaEndofyear, n=iterations, adjust=4, from=0, to=0.3)
+DDetIn=density(VisaEndofyear, n=iterations, adjust=4, from=0, to=0.2)
 yDetecIN=DDetIn$y
 xDetecIN=DDetIn$x
 #p5=plot(xDetecIN,yDetecIN, type="l",xlab="Visa End of year Elasticity",ylab="Probability Density")
-DetIn=density(BaseLinePosterios$V6, n=iterations, adjust=4, from=0, to=0.3)
+DetIn=density(BaseLinePosterios$V6, n=iterations, adjust=4, from=0, to=0.2)
 BaseY=DetIn$y
 BaseX=DetIn$x
 plot(BaseX,BaseY, type="l",xlab="Visa Elasticity",ylab="Probability Density", col="blue")
@@ -269,33 +276,30 @@ lines(xDetecIN,yDetecIN)
 old.par <- par(mfrow=c(2, 2))
 
 
-DDetIn=density(Legalboxes, n=iterations, adjust=4)
+DDetIn=density(Legalboxes, n=iterations,adjust=4)
 SimY=DDetIn$y
 SimX=DDetIn$x
-
-DDetIn=density(BaseLinePosterios$V9, n=iterations, adjust=4)
+DDetIn=density(BaseLinePosterios$V9, n=iterations)
 BaseY=DDetIn$y
 BaseX=DDetIn$x
-plot(BaseX,BaseY, type="l",xlab="Legal Boxes",ylab="Probability Density", col="blue")
+plot(SimX,SimY, type="l",xlab="Legal Boxes",ylab="Probability Density", xlim=c(80000,100000), ylim=c(0,0.00015))
 abline(v=quota, col="purple")
-lines(SimX,SimY)
+lines(BaseX,BaseY, col="blue" )
 
 
 DDetIn=density(Ratio, n=iterations, adjust=4, from=0, to=1)
 SimY=DDetIn$y
 SimX=DDetIn$x
-
-
 DDetIn=density(BaseLinePosterios$V8, n=iterations, adjust=4, from=0, to=1)
 BaseY=DDetIn$y
 BaseX=DDetIn$x
 plot(BaseX,BaseY, type="l",xlab="Ratio",ylab="Probability Density",xlim = c(0,1), col="blue")
 lines(SimX,SimY)
 
-DDetIn=density(Illegalboxes, n=iterations, adjust=4)
+DDetIn=density(Illegalboxes, n=iterations)
 SimY=DDetIn$y
 SimX=DDetIn$x
-DetIn=density(BaseLinePosterios$V7, n=iterations, adjust=4)
+DetIn=density(BaseLinePosterios$V7, n=iterations)
 BaseY=DetIn$y
 BaseX=DetIn$x
 plot(BaseX,BaseY, type="l",xlab="Illegal Boxes",ylab="Probability Density", col="blue", xlim=c(0,500000))
@@ -309,6 +313,7 @@ BaseY=DetIn$y
 BaseX=DetIn$x
 plot(BaseX,BaseY, type="l",xlab="Total Boxes",ylab="Probability Density", col="blue", xlim=c(0,500000))
 lines(SimX,SimY)
+
 ```
 
 Graph landings over time and comparison to data
@@ -362,9 +367,9 @@ Landings_Figure <- Landings_Figure %>% add_trace(y = ~landings_plot$V1*boxtoton,
 
 
 ##Illegal sims
-Landings_Figure <- Landings_Figure%>% add_trace(landings_plot, x = ~seq(1:weeks), y = ~landings_plot$V8*boxtoton, type = 'scatter', mode = 'lines',line = list(color = 'transparent'),showlegend = FALSE, name = 'High Landings') 
-Landings_Figure <- Landings_Figure %>% add_trace(y = ~landings_plot$V9*boxtoton, type = 'scatter', mode = 'lines',fill = 'tonexty', fillcolor='rgba(220,20,60,0.2)', line = list(color = 'transparent'),showlegend = FALSE, name = 'Low Landings')
-Landings_Figure <- Landings_Figure %>% add_trace(y = ~landings_plot$V7*boxtoton, type = 'scatter', mode = 'lines',line = list(color='red'),name = 'Illegal Simulation Mean +/-SD') 
+#Landings_Figure <- Landings_Figure%>% add_trace(landings_plot, x = ~seq(1:weeks), y = ~landings_plot$V8*boxtoton, type = 'scatter', mode = 'lines',line = list(color = 'transparent'),showlegend = FALSE, name = 'High Landings') 
+#Landings_Figure <- Landings_Figure %>% add_trace(y = ~landings_plot$V9*boxtoton, type = 'scatter', mode = 'lines',fill = 'tonexty', fillcolor='rgba(220,20,60,0.2)', line = list(color = 'transparent'),showlegend = FALSE, name = 'Low Landings')
+#Landings_Figure <- Landings_Figure %>% add_trace(y = ~landings_plot$V7*boxtoton, type = 'scatter', mode = 'lines',line = list(color='red'),name = 'Illegal Simulation Mean +/-SD') 
 ##Illegal
 
 #Landings_Figure <- Landings_Figure %>% layout(yaxis = list(range = c(0,150)))
@@ -373,4 +378,6 @@ Landings_Figure <- Landings_Figure %>% layout(xaxis = list(title = "Week"))
 Landings_Figure <- Landings_Figure %>% layout(legend = list(x =0.5, y = 1.1))
 Landings_Figure <- Landings_Figure %>% layout(yaxis = list(title = "Ton"))
 Landings_Figure
+
+
 ```
